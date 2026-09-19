@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", serif;
+  --font-display: "Archivo", sans-serif;
+  --font-arabic: "Amiri", serif;
+  --font-hindi: "Noto Serif Devanagari", serif;
+  --font-chinese: "Noto Serif SC", serif;
+  --font-thin-serif: "Cormorant Garamond", serif;
+      --font-arabic: "Cairo", sans-serif;
+      --font-hindi: "Hind", sans-serif;
+      --font-chinese: "Noto Sans SC", sans-serif;
+}
