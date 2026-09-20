@@ -2,6 +2,9 @@ import { motion } from "framer-motion";
 import portraitImg from "../assets/Images/nilu_4x.webp";
 import NameCycle from "./NameCycle";
 import { useLayoutEffect, useRef, useState } from "react";
+import bgVideoDark from "../assets/videos/bg-dark.mp4";
+import bgVideoWhite from "../assets/videos/bg-yellow.mp4";
+import { useTheme } from "../context/ThemeContext";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -13,7 +16,8 @@ const fadeUp = {
 };
 
 export default function Hero() {
-    const sectionRef = useRef(null);
+  const { theme } = useTheme();
+  const sectionRef = useRef(null);
   const imgRef = useRef(null);
   const [headlineTop, setHeadlineTop] = useState(0);
 
@@ -22,61 +26,97 @@ export default function Hero() {
       if (imgRef.current && sectionRef.current) {
         const imgRect = imgRef.current.getBoundingClientRect();
         const sectionRect = sectionRef.current.getBoundingClientRect();
-        // 8% down from the image's own top edge = roughly head height, always
-        setHeadlineTop(imgRect.top - sectionRect.top + imgRect.height * 0.20) ;
+        setHeadlineTop(imgRect.top - sectionRect.top + imgRect.height * 0.2);
       }
     }
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
-  return (  
-    <section ref={sectionRef} className="relative h-screen w-full overflow-hidden bg-[#fffdf9] m-0 p-0">
-      {/* Glow — concentrated bottom-center */}
-      <div className="absolute w-[55vw] h-[55vw] max-w-[750px] max-h-[750px] rounded-full bg-orange-300/60 blur-[8vw] bottom-[-15%] left-1/2 -translate-x-[65%]" />
-      <div className="absolute w-[40vw] h-[40vw] max-w-[550px] max-h-[550px] rounded-full bg-yellow-300/50 blur-[7vw] bottom-[-5%] left-1/2 -translate-x-[30%]" />
 
-     {/* Headline — bigger, thinner, right at head height */}
+  return (
+    <section
+      ref={sectionRef}
+      className="relative h-screen w-full overflow-hidden m-0 p-0 bg-[#fffdf9] dark:bg-black transition-colors duration-500"
+    >
+
+
+    <video
+  key={theme}
+  autoPlay
+  loop
+  muted
+  playsInline
+  className="absolute inset-0 w-full h-full object-cover opacity-30 "
+>
+  <source src={theme === "dark" ? bgVideoDark : bgVideoWhite} type="video/mp4" />
+</video>
+      {/* Glow — softer, warmer, biased bottom-left like the reference, not a full-width yellow wash */}
+      <div className="absolute w-[42vw] h-[42vw] max-w-[560px] max-h-[560px] rounded-full bg-amber-200/35 dark:bg-orange-500/15 blur-[11vw] bottom-[-12%] left-[-4%] transition-colors duration-500" />
+      <div className="absolute w-[30vw] h-[30vw] max-w-[420px] max-h-[420px] rounded-full bg-orange-200/30 dark:bg-yellow-400/10 blur-[9vw] bottom-[2%] left-[14%] transition-colors duration-500" />
+      <div className="absolute w-[24vw] h-[24vw] max-w-[340px] max-h-[340px] rounded-full bg-white/50 dark:bg-white/5 blur-[7vw] top-[8%] left-[42%] transition-colors duration-500" />
+       
       <motion.h2
+        custom={0}
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
         style={{ top: headlineTop }}
-        className="absolute z-0 lg:left-[29%] left-[13%] font-thin-serif italic font-light text-[clamp(3.5rem,10vw,8rem)] leading-none"
+        className="absolute z-0 lg:left-[29%] left-[10%] font-thin-serif italic font-light text-[clamp(2.75rem,10vw,8rem)] leading-none text-black dark:text-white transition-colors duration-500"
       >
         Hey,
       </motion.h2>
       <motion.h2
+        custom={0.15}
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
         style={{ top: headlineTop }}
-        className="absolute z-0 lg:right-[30%] right-[18%] font-thin-serif italic font-light text-[clamp(3.5rem,10vw,8rem)] leading-none"
+        className="absolute z-0 lg:right-[30%] right-[6%] font-thin-serif italic font-light text-[clamp(2.75rem,10vw,8rem)] leading-none text-black dark:text-white transition-colors duration-500"
       >
         there
       </motion.h2>
 
       <motion.img
         ref={imgRef}
+        custom={0.3}
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
         src={portraitImg}
         alt="Portrait"
-        className="absolute z-10 bottom-0 left-1/2 -translate-x-1/2 h-[100%] sm:h-[100%] w-auto max-w-none object-contain object-bottom"
+        className="absolute saturate- opacity-100 d z-10 bottom-0 left-1/2 -translate-x-1/2 h-[100%] w-auto max-w-none object-contain object-bottom transition-opacity duration-500"
       />
 
-
+      {/* Availability badge — hidden on mobile entirely, as requested */}
       <motion.div
         custom={0.5}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 top-[46%] left-[4%] flex items-center gap-2 bg-white shadow-md rounded-full px-4 py-2 text-[clamp(0.7rem,1vw,0.85rem)]"
+        className="hidden sm:flex absolute z-20 top-[46%] left-[4%] items-center gap-2 rounded-full px-4 py-2 text-[clamp(0.7rem,1vw,0.85rem)]
+                   bg-white text-black shadow-md
+                   dark:bg-white/10 dark:text-white dark:shadow-none
+                   transition-colors duration-500"
       >
-        <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+        <span className="w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400 animate-pulse shrink-0" />
         Available for new opportunities
       </motion.div>
 
+      {/* Specialized text — short "UI / UX" on mobile, full sentence from sm: up */}
       <motion.p
         custom={0.6}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 top-[46%] right-[4%] text-[clamp(0.7rem,1vw,0.85rem)] text-right max-w-[220px]"
+        className="absolute z-20 top-[46%] right-[4%] text-right max-w-[220px] text-[clamp(0.7rem,1vw,0.85rem)]
+                   text-black dark:text-white/85
+                   transition-colors duration-500"
       >
-        Specialized in Web Design, UX / UI, and Front End Development.
+        <span className="sm:hidden">UI / UX</span>
+        <span className="hidden sm:inline">
+          Specialized in Web Design, UX / UI, and Front End Development.
+        </span>
       </motion.p>
 
       <motion.h4
@@ -84,16 +124,18 @@ export default function Hero() {
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 bottom-[3%] left-[4%] font-display font-light uppercase leading-[1] text-[clamp(2.2rem,7vw,5rem)]">
-  I am<br /><NameCycle />
-</motion.h4>
+        className="absolute z-20 bottom-[3%] left-[4%] font-display font-light uppercase leading-[1] text-[clamp(2rem,7vw,5rem)] text-black dark:text-white transition-colors duration-500"
+      >
+        I am<br /><NameCycle />
+      </motion.h4>
 
+      {/* Role — switched to Cairo, bold but not black-weight, wider tracking for a cleaner label feel */}
       <motion.h3
         custom={0.85}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 bottom-[8%] right-[4%] font-display font-black uppercase leading-tight text-[clamp(1rem,2vw,1.6rem)] text-right"
+        className="absolute z-20 bottom-[8%] right-[4%] text-right font-[Cairo] font-bold uppercase tracking-wide leading-tight text-[clamp(0.9rem,2vw,1.5rem)] text-black dark:text-white transition-colors duration-500"
       >
         Web<br />Designer<br />Developer
       </motion.h3>
