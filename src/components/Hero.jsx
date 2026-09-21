@@ -3,7 +3,7 @@ import portraitImg from "../assets/Images/nilu_4x.webp";
 import NameCycle from "./NameCycle";
 import { useLayoutEffect, useRef, useState } from "react";
 import bgVideoDark from "../assets/videos/bg-dark.mp4";
-import bgVideoWhite from "../assets/videos/bg-yellow.mp4";
+import bgVideoLight from "../assets/videos/bg-yellow.mp4";
 import { useTheme } from "../context/ThemeContext";
 
 const fadeUp = {
@@ -37,25 +37,24 @@ export default function Hero() {
   return (
     <section
       ref={sectionRef}
-      className="relative h-screen w-full overflow-hidden m-0 p-0 bg-[#fffdf9] dark:bg-black transition-colors duration-500"
+      className="relative isolate h-screen w-full overflow-hidden m-0 p-0 bg-[#fffdf9] dark:bg-black transition-colors duration-500"
     >
+      <video
+        key={theme}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover opacity-30 z-0"
+      >
+        <source src={theme === "dark" ? bgVideoDark : bgVideoLight} type="video/mp4" />
+      </video>
 
+      {/* Glow */}
+      <div className="absolute z-0 w-[42vw] h-[42vw] max-w-[560px] max-h-[560px] rounded-full bg-amber-200/35 dark:bg-orange-500/15 blur-[11vw] bottom-[-12%] left-[-4%] transition-colors duration-500" />
+      <div className="absolute z-0 w-[30vw] h-[30vw] max-w-[420px] max-h-[420px] rounded-full bg-orange-200/30 dark:bg-yellow-400/10 blur-[9vw] bottom-[2%] left-[14%] transition-colors duration-500" />
+      <div className="absolute z-0 w-[24vw] h-[24vw] max-w-[340px] max-h-[340px] rounded-full bg-white/50 dark:bg-white/5 blur-[7vw] top-[8%] left-[42%] transition-colors duration-500" />
 
-    <video
-  key={theme}
-  autoPlay
-  loop
-  muted
-  playsInline
-  className="absolute inset-0 w-full h-full object-cover opacity-30 "
->
-  <source src={theme === "dark" ? bgVideoDark : bgVideoWhite} type="video/mp4" />
-</video>
-      {/* Glow — softer, warmer, biased bottom-left like the reference, not a full-width yellow wash */}
-      <div className="absolute w-[42vw] h-[42vw] max-w-[560px] max-h-[560px] rounded-full bg-amber-200/35 dark:bg-orange-500/15 blur-[11vw] bottom-[-12%] left-[-4%] transition-colors duration-500" />
-      <div className="absolute w-[30vw] h-[30vw] max-w-[420px] max-h-[420px] rounded-full bg-orange-200/30 dark:bg-yellow-400/10 blur-[9vw] bottom-[2%] left-[14%] transition-colors duration-500" />
-      <div className="absolute w-[24vw] h-[24vw] max-w-[340px] max-h-[340px] rounded-full bg-white/50 dark:bg-white/5 blur-[7vw] top-[8%] left-[42%] transition-colors duration-500" />
-       
       <motion.h2
         custom={0}
         initial="hidden"
@@ -77,6 +76,7 @@ export default function Hero() {
         there
       </motion.h2>
 
+      {/* Portrait — restored to subtle background presence, not full opacity */}
       <motion.img
         ref={imgRef}
         custom={0.3}
@@ -85,10 +85,10 @@ export default function Hero() {
         variants={fadeUp}
         src={portraitImg}
         alt="Portrait"
-        className="absolute saturate- opacity-100 d z-10 bottom-0 left-1/2 -translate-x-1/2 h-[100%] w-auto max-w-none object-contain object-bottom transition-opacity duration-500"
+        className="absolute saturate-0 opacity-10 dark:opacity-[0.15] z-10 bottom-0 left-1/2 -translate-x-1/2 h-[100%] w-auto max-w-none object-contain object-bottom transition-opacity duration-500"
       />
 
-      {/* Availability badge — hidden on mobile entirely, as requested */}
+      {/* Badge — glass card on mobile so it's readable over video+photo, plain from sm: up */}
       <motion.div
         custom={0.5}
         initial="hidden"
@@ -103,14 +103,16 @@ export default function Hero() {
         Available for new opportunities
       </motion.div>
 
-      {/* Specialized text — short "UI / UX" on mobile, full sentence from sm: up */}
+      {/* Specialized text — glass card on mobile, plain from sm: up */}
       <motion.p
         custom={0.6}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
         className="absolute z-20 top-[46%] right-[4%] text-right max-w-[220px] text-[clamp(0.7rem,1vw,0.85rem)]
-                   text-black dark:text-white/85
+                   px-3 py-2 rounded-xl bg-white/60 backdrop-blur-md text-black
+                   sm:bg-transparent sm:backdrop-blur-none sm:px-0 sm:py-0
+                   dark:bg-black/40 dark:sm:bg-transparent dark:text-white/85
                    transition-colors duration-500"
       >
         <span className="sm:hidden">UI / UX</span>
@@ -119,23 +121,32 @@ export default function Hero() {
         </span>
       </motion.p>
 
+      {/* Name — glass card on mobile only, since this sits right over the portrait there */}
       <motion.h4
         custom={0.7}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 bottom-[3%] left-[4%] font-display font-light uppercase leading-[1] text-[clamp(2rem,7vw,5rem)] text-black dark:text-white transition-colors duration-500"
+        className="absolute z-20 bottom-[3%] left-[4%] font-display font-light uppercase leading-[1] text-[clamp(2rem,7vw,5rem)]
+                   px-3 py-2 rounded-2xl bg-white/50 backdrop-blur-md text-black
+                   sm:bg-transparent sm:backdrop-blur-none sm:px-0 sm:py-0
+                   dark:bg-black/40 dark:sm:bg-transparent dark:text-white
+                   transition-colors duration-500"
       >
         I am<br /><NameCycle />
       </motion.h4>
 
-      {/* Role — switched to Cairo, bold but not black-weight, wider tracking for a cleaner label feel */}
+      {/* Role — same glass treatment, mobile only */}
       <motion.h3
         custom={0.85}
         initial="hidden"
         animate="visible"
         variants={fadeUp}
-        className="absolute z-20 bottom-[8%] right-[4%] text-right font-[Cairo] font-bold uppercase tracking-wide leading-tight text-[clamp(0.9rem,2vw,1.5rem)] text-black dark:text-white transition-colors duration-500"
+        className="absolute z-20 bottom-[8%] right-[4%] text-right font-[Cairo] font-bold uppercase tracking-wide leading-tight text-[clamp(0.9rem,2vw,1.5rem)]
+                   px-3 py-2 rounded-xl bg-white/50 backdrop-blur-md text-black
+                   sm:bg-transparent sm:backdrop-blur-none sm:px-0 sm:py-0
+                   dark:bg-black/40 dark:sm:bg-transparent dark:text-white
+                   transition-colors duration-500"
       >
         Web<br />Designer<br />Developer
       </motion.h3>

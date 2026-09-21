@@ -30,12 +30,12 @@ export default function MarqueeToPhysics() {
   const rootRef = useRef(null);
   const stageRef = useRef(null);
   const bodiesRef = useRef([]);
+  const elsRef = useRef([]); // DOM refs, independent of bodiesRef timing
   const rafRef = useRef(null);
   const capturedRef = useRef({});
   const dragRef = useRef({ active: null, lastPos: null, lastTime: 0, vx: 0, vy: 0 });
 
-  // Trigger: capture each pill's REAL current position before switching modes,
-  // so physics picks up exactly where the marquee left off - no teleport
+  // Trigger: capture each pill's REAL current position before switching modes
   useEffect(() => {
     function onScroll() {
       if (mode !== "marquee" || !rootRef.current) return;
@@ -44,18 +44,18 @@ export default function MarqueeToPhysics() {
         const stageRect = rootRef.current.getBoundingClientRect();
         const positions = {};
         allPills.forEach((p) => {
-  const candidates = rootRef.current.querySelectorAll(`[data-label="${CSS.escape(p.label)}"]`);
-  const visibleEl = Array.from(candidates).find((el) => el.offsetParent !== null);
-  if (visibleEl) {
-    const r = visibleEl.getBoundingClientRect();
-    positions[p.label] = {
-      x: r.left - stageRect.left,
-      y: r.top - stageRect.top,
-      w: r.width,
-      h: r.height,
-    };
-  }
-});
+          const candidates = rootRef.current.querySelectorAll(`[data-label="${CSS.escape(p.label)}"]`);
+          const visibleEl = Array.from(candidates).find((el) => el.offsetParent !== null);
+          if (visibleEl) {
+            const r = visibleEl.getBoundingClientRect();
+            positions[p.label] = {
+              x: r.left - stageRect.left,
+              y: r.top - stageRect.top,
+              w: r.width,
+              h: r.height,
+            };
+          }
+        });
         capturedRef.current = positions;
         setMode("physics");
       }
@@ -65,77 +65,92 @@ export default function MarqueeToPhysics() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [mode]);
 
+  // Physics init - retries until the stage actually has real dimensions
+  // (fixes a timing gap that showed up specifically on iOS Safari)
   useEffect(() => {
-    if (mode !== "physics" || !stageRef.current) return;
-    const stage = stageRef.current;
-    const W = stage.clientWidth;
+    if (mode !== "physics") return;
+    let cancelled = false;
+    let rafId;
 
-    bodiesRef.current = allPills.map((p, i) => {
-      const captured = capturedRef.current[p.label];
-      return {
-        ...p,
-        x: captured ? captured.x : 60 + Math.random() * Math.max(1, W - 220),
-        y: captured ? captured.y : -80 - Math.random() * 400,
-        vx: captured ? -20 : (Math.random() - 0.5) * 0.6, // small residual drift matching marquee direction
-        vy: 0,
-        w: captured ? captured.w : 110 + p.label.length * 8,
-        h: captured ? captured.h : 46,
-        rot: 0,
-        dragging: false,
-        el: null,
-      };
-    });
-
-    const GRAVITY = 0.16;
-    const MAX_FALL_SPEED = 9;
-    const FRICTION = 0.985;
-    const REST = 0.22;
-
-    function step() {
-      const w = stage.clientWidth;
-      const h = stage.clientHeight;
-      const list = bodiesRef.current;
-
-      list.forEach((b) => {
-        if (b.dragging) return;
-        b.vy = Math.min(b.vy + GRAVITY, MAX_FALL_SPEED);
-        b.vx *= FRICTION;
-        b.x += b.vx;
-        b.y += b.vy;
-
-        if (b.y + b.h > h) {
-          b.y = h - b.h;
-          b.vy = -Math.abs(b.vy) * REST;
-          if (Math.abs(b.vy) < 0.5) b.vy = 0;
-        }
-        if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx) * REST; }
-        if (b.x + b.w > w) { b.x = w - b.w; b.vx = -Math.abs(b.vx) * REST; }
-      });
-
-      for (let i = 0; i < list.length; i++) {
-        for (let j = i + 1; j < list.length; j++) {
-          const a = list[i], b = list[j];
-          const dx = (b.x + b.w / 2) - (a.x + a.w / 2);
-          const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
-          const dist = Math.hypot(dx, dy) || 1;
-          const minDist = (a.w + b.w) / 4;
-          if (dist < minDist) {
-            const overlap = ((minDist - dist) / 2) * 0.3;
-            const nx = dx / dist, ny = dy / dist;
-            if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
-            if (!b.dragging) { b.x += nx * overlap; b.y += ny * overlap; }
-          }
-        }
+    function tryInit() {
+      if (cancelled) return;
+      const stage = stageRef.current;
+      if (!stage || stage.clientWidth === 0 || stage.clientHeight === 0) {
+        rafId = requestAnimationFrame(tryInit);
+        return;
       }
 
-      list.forEach((b) => {
-        if (b.el) b.el.style.transform = `translate(${b.x}px, ${b.y}px) rotate(${b.rot}deg)`;
+      const W = stage.clientWidth;
+      bodiesRef.current = allPills.map((p) => {
+        const captured = capturedRef.current[p.label];
+        return {
+          ...p,
+          x: captured ? captured.x : 60 + Math.random() * Math.max(1, W - 220),
+          y: captured ? captured.y : -80 - Math.random() * 400,
+          vx: 0,
+          vy: 0,
+          w: captured ? captured.w : 110 + p.label.length * 8,
+          h: captured ? captured.h : 46,
+          rot: 0,
+          dragging: false,
+        };
       });
 
-      rafRef.current = requestAnimationFrame(step);
+      const GRAVITY = 0.16;
+      const MAX_FALL_SPEED = 9;
+      const FRICTION = 0.985;
+      const REST = 0.22;
+
+      function step() {
+        const w = stage.clientWidth;
+        const h = stage.clientHeight;
+        const list = bodiesRef.current;
+
+        list.forEach((b) => {
+          if (b.dragging) return;
+          b.vy = Math.min(b.vy + GRAVITY, MAX_FALL_SPEED);
+          b.vx *= FRICTION;
+          b.x += b.vx;
+          b.y += b.vy;
+
+          if (b.y + b.h > h) {
+            b.y = h - b.h;
+            b.vy = -Math.abs(b.vy) * REST;
+            if (Math.abs(b.vy) < 0.5) b.vy = 0;
+          }
+          if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx) * REST; }
+          if (b.x + b.w > w) { b.x = w - b.w; b.vx = -Math.abs(b.vx) * REST; }
+        });
+
+        for (let i = 0; i < list.length; i++) {
+  for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    const dx = (b.x + b.w / 2) - (a.x + a.w / 2);
+    const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+    const dist = Math.hypot(dx, dy) || 1;
+    const minDist = (a.w + b.w) / 4;
+    if (dist < minDist) {
+      // Cap the correction so a bad frame can't cause a big visible jump
+      const overlap = Math.min(((minDist - dist) / 2) * 0.15, 1.5);
+      const nx = dx / dist, ny = dy / dist;
+      if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
+      if (!b.dragging) { b.x += nx * overlap; b.y += ny * overlap; }
     }
-    rafRef.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafRef.current);
+  }
+}
+
+        list.forEach((b, i) => {
+          const el = elsRef.current[i];
+          if (el) el.style.transform = `translate(${b.x}px, ${b.y}px) rotate(${b.rot}deg)`;
+        });
+
+        rafId = requestAnimationFrame(step);
+      }
+      rafId = requestAnimationFrame(step);
+    }
+
+    tryInit();
+    return () => { cancelled = true; cancelAnimationFrame(rafId); };
   }, [mode]);
 
   const getPoint = useCallback((e) => {
@@ -144,8 +159,10 @@ export default function MarqueeToPhysics() {
     return { x: t.clientX - rect.left, y: t.clientY - rect.top };
   }, []);
 
-  function onPointerDown(e, body) {
+  function onPointerDown(e, index) {
     e.preventDefault();
+    const body = bodiesRef.current[index];
+    if (!body) return;
     body.dragging = true;
     dragRef.current.active = body;
     const p = getPoint(e);
@@ -156,6 +173,7 @@ export default function MarqueeToPhysics() {
   const onPointerMove = useCallback((e) => {
     const body = dragRef.current.active;
     if (!body) return;
+    if (e.cancelable) e.preventDefault();
     const p = getPoint(e);
     const now = performance.now();
     const dt = Math.max(now - dragRef.current.lastTime, 1);
@@ -204,32 +222,58 @@ export default function MarqueeToPhysics() {
         <div className="absolute top-0 left-0 w-full flex flex-col gap-4 py-6">
           <div className="flex md:hidden gap-4 whitespace-nowrap animate-[marquee-left_22s_linear_infinite]">
             {[...rowOne, ...rowOne].map((p, i) => (
-              <span key={i} data-label={p.label} className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500" style={glassPill(p.color)}>{p.label}</span>
+              <span
+                key={i}
+                data-label={i < rowOne.length ? p.label : undefined}
+                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
+                style={glassPill(p.color)}
+              >
+                {p.label}
+              </span>
             ))}
           </div>
           <div className="flex md:hidden gap-4 whitespace-nowrap animate-[marquee-right_26s_linear_infinite]">
             {[...rowTwo, ...rowTwo].map((p, i) => (
-              <span key={i} data-label={p.label} className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500" style={glassPill(p.color)}>{p.label}</span>
+              <span
+                key={i}
+                data-label={i < rowTwo.length ? p.label : undefined}
+                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
+                style={glassPill(p.color)}
+              >
+                {p.label}
+              </span>
             ))}
           </div>
           <div className="hidden md:flex gap-4 whitespace-nowrap animate-[marquee-left_32s_linear_infinite]">
             {[...allPills, ...allPills].map((p, i) => (
-              <span key={i} data-label={p.label} className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500" style={glassPill(p.color)}>{p.label}</span>
+              <span
+                key={i}
+                data-label={i < allPills.length ? p.label : undefined}
+                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
+                style={glassPill(p.color)}
+              >
+                {p.label}
+              </span>
             ))}
           </div>
         </div>
       )}
 
       {mode === "physics" && (
-        <div ref={stageRef} className="absolute inset-0 touch-none">
+        <div ref={stageRef} className="absolute inset-0" style={{ touchAction: "none" }}>
           {allPills.map((p, i) => (
             <div
               key={p.label}
-              ref={(el) => { if (bodiesRef.current[i]) bodiesRef.current[i].el = el; }}
-              onMouseDown={(e) => onPointerDown(e, bodiesRef.current[i])}
-              onTouchStart={(e) => onPointerDown(e, bodiesRef.current[i])}
-              className="absolute top-0 left-0 px-5 py-2.5 rounded-full text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
-              style={{ ...glassPill(p.color), touchAction: "none" }}
+              ref={(el) => { elsRef.current[i] = el; }}
+              onMouseDown={(e) => onPointerDown(e, i)}
+              onTouchStart={(e) => onPointerDown(e, i)}
+              className="absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
+              style={{
+                ...glassPill(p.color),
+                touchAction: "none",
+                WebkitUserSelect: "none",
+                WebkitTapHighlightColor: "transparent",
+              }}
             >
               {p.label}
             </div>
