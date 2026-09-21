@@ -278,28 +278,28 @@ export default function MarqueeToPhysics() {
       )}
 
       {mode === "physics" && (
-        <div ref={stageRef} className="absolute inset-0" style={{ touchAction: "none" }}>
-          {allPills.map((p, i) => (
-            <div
-              key={p.label}
-              ref={(el) => {
-                elsRef.current[i] = el;
-                pillRefs.current[i] = el;
-              }}
-              onMouseDown={(e) => onPointerDown(e, i)}
-              className="absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
-              style={{
-                ...glassPill(p.color),
-                touchAction: "none",
-                WebkitUserSelect: "none",
-                WebkitTapHighlightColor: "transparent",
-              }}
-            >
-              {p.label}
-            </div>
-          ))}
-        </div>
-      )}
+  <div ref={stageRef} className="absolute inset-0">
+    {allPills.map((p, i) => (
+      <div
+        key={p.label}
+        ref={(el) => {
+          elsRef.current[i] = el;
+          pillRefs.current[i] = el;
+        }}
+        onMouseDown={(e) => onPointerDown(e, i)}
+        className="absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
+        style={{
+          ...glassPill(p.color),
+          touchAction: "none",
+          WebkitUserSelect: "none",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        {p.label}
+      </div>
+    ))}
+  </div>
+)}
     </div>
   );
 }
