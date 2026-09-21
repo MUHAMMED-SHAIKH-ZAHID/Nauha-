@@ -685,10 +685,21 @@ export default function FooterGarden() {
     });
   }
 
+  useEffect(() => {
+  if (soundOn && audioRef.current) {
+    audioRef.current.load(); // pick up the new src
+    audioRef.current.play().catch(() => {});
+  }
+}, [theme, soundOn]);
+
   return (
     <div className="relative w-full h-[380px] sm:h-[460px] rounded-t-3xl overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-crosshair" />
-      <audio ref={audioRef} loop src="/ambient-garden.mp3" />
+      <audio
+  ref={audioRef}
+  loop
+  src={theme === "dark" ? "/audio/ambient-garden-night.mp3" : "/audio/ambient-garden-day.mp3"}
+/>
 
       <div
         className="absolute inset-0 z-10 flex flex-col items-center pt-8 sm:pt-10 px-4 text-center pointer-events-none transition-opacity duration-500"
