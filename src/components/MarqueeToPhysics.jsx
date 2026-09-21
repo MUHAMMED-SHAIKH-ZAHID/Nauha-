@@ -30,7 +30,8 @@ export default function MarqueeToPhysics() {
   const rootRef = useRef(null);
   const stageRef = useRef(null);
   const bodiesRef = useRef([]);
-  const elsRef = useRef([]); // DOM refs, independent of bodiesRef timing
+  const elsRef = useRef([]);
+  const pillRefs = useRef([]);
   const rafRef = useRef(null);
   const capturedRef = useRef({});
   const dragRef = useRef({ active: null, lastPos: null, lastTime: 0, vx: 0, vy: 0 });
@@ -66,7 +67,6 @@ export default function MarqueeToPhysics() {
   }, [mode]);
 
   // Physics init - retries until the stage actually has real dimensions
-  // (fixes a timing gap that showed up specifically on iOS Safari)
   useEffect(() => {
     if (mode !== "physics") return;
     let cancelled = false;
@@ -89,8 +89,8 @@ export default function MarqueeToPhysics() {
           y: captured ? captured.y : -80 - Math.random() * 400,
           vx: 0,
           vy: 0,
-          w: captured ? captured.w : 110 + p.label.length * 8,
-          h: captured ? captured.h : 46,
+          w: captured ? captured.w : 90 + p.label.length * 6,
+          h: captured ? captured.h : 36,
           rot: 0,
           dragging: false,
         };
@@ -122,22 +122,22 @@ export default function MarqueeToPhysics() {
           if (b.x + b.w > w) { b.x = w - b.w; b.vx = -Math.abs(b.vx) * REST; }
         });
 
+        // Gentle, capped separation - no single-frame jumps even when densely packed
         for (let i = 0; i < list.length; i++) {
-  for (let j = i + 1; j < list.length; j++) {
-    const a = list[i], b = list[j];
-    const dx = (b.x + b.w / 2) - (a.x + a.w / 2);
-    const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
-    const dist = Math.hypot(dx, dy) || 1;
-    const minDist = (a.w + b.w) / 4;
-    if (dist < minDist) {
-      // Cap the correction so a bad frame can't cause a big visible jump
-      const overlap = Math.min(((minDist - dist) / 2) * 0.15, 1.5);
-      const nx = dx / dist, ny = dy / dist;
-      if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
-      if (!b.dragging) { b.x += nx * overlap; b.y += ny * overlap; }
-    }
-  }
-}
+          for (let j = i + 1; j < list.length; j++) {
+            const a = list[i], b = list[j];
+            const dx = (b.x + b.w / 2) - (a.x + a.w / 2);
+            const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+            const dist = Math.hypot(dx, dy) || 1;
+            const minDist = (a.w + b.w) / 4;
+            if (dist < minDist) {
+              const overlap = Math.min(((minDist - dist) / 2) * 0.15, 1.5);
+              const nx = dx / dist, ny = dy / dist;
+              if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
+              if (!b.dragging) { b.x += nx * overlap; b.y += ny * overlap; }
+            }
+          }
+        }
 
         list.forEach((b, i) => {
           const el = elsRef.current[i];
@@ -159,7 +159,7 @@ export default function MarqueeToPhysics() {
     return { x: t.clientX - rect.left, y: t.clientY - rect.top };
   }, []);
 
-  function onPointerDown(e, index) {
+  const onPointerDown = useCallback((e, index) => {
     e.preventDefault();
     const body = bodiesRef.current[index];
     if (!body) return;
@@ -168,7 +168,7 @@ export default function MarqueeToPhysics() {
     const p = getPoint(e);
     dragRef.current.lastPos = p;
     dragRef.current.lastTime = performance.now();
-  }
+  }, [getPoint]);
 
   const onPointerMove = useCallback((e) => {
     const body = dragRef.current.active;
@@ -207,6 +207,24 @@ export default function MarqueeToPhysics() {
     };
   }, [onPointerMove]);
 
+  // Attach touchstart NATIVELY (bypassing React's passive synthetic event)
+  // so preventDefault() actually works and the browser doesn't hijack the
+  // gesture as a page scroll before the drag can start.
+  useEffect(() => {
+    if (mode !== "physics") return;
+    const handlers = [];
+    allPills.forEach((p, i) => {
+      const el = pillRefs.current[i];
+      if (!el) return;
+      const handler = (e) => onPointerDown(e, i);
+      el.addEventListener("touchstart", handler, { passive: false });
+      handlers.push({ el, handler });
+    });
+    return () => {
+      handlers.forEach(({ el, handler }) => el.removeEventListener("touchstart", handler));
+    };
+  }, [mode, onPointerDown]);
+
   const glassPill = (rgb) => ({
     background: theme === "dark" ? `rgba(${rgb}, 0.22)` : `rgba(${rgb}, 0.14)`,
     border: theme === "dark" ? `1px solid rgba(${rgb}, 0.45)` : `1px solid rgba(${rgb}, 0.3)`,
@@ -225,7 +243,7 @@ export default function MarqueeToPhysics() {
               <span
                 key={i}
                 data-label={i < rowOne.length ? p.label : undefined}
-                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
+                className="px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
                 style={glassPill(p.color)}
               >
                 {p.label}
@@ -237,7 +255,7 @@ export default function MarqueeToPhysics() {
               <span
                 key={i}
                 data-label={i < rowTwo.length ? p.label : undefined}
-                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
+                className="px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
                 style={glassPill(p.color)}
               >
                 {p.label}
@@ -264,9 +282,11 @@ export default function MarqueeToPhysics() {
           {allPills.map((p, i) => (
             <div
               key={p.label}
-              ref={(el) => { elsRef.current[i] = el; }}
+              ref={(el) => {
+                elsRef.current[i] = el;
+                pillRefs.current[i] = el;
+              }}
               onMouseDown={(e) => onPointerDown(e, i)}
-              onTouchStart={(e) => onPointerDown(e, i)}
               className="absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
               style={{
                 ...glassPill(p.color),
