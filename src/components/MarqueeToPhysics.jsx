@@ -1,40 +1,92 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme } from "../context/ThemeContext";
+import {
+  Code2,
+  Layers,
+  Atom,
+  Braces,
+  Globe,
+  Terminal,
+  GitBranch,
+  PenTool,
+  ShoppingBag,
+  Coffee,
+  MousePointer2,
+  CircleCheck,
+  Sparkle,
+  Sparkles,
+  Share2,
+} from "lucide-react";
 
-const rowOne = [
-  { label: "Frontend Developer", color: "56, 138, 221" },
-  { label: "Full-Stack Developer", color: "216, 90, 48" },
-  { label: "React", color: "127, 119, 221" },
-  { label: "JavaScript", color: "186, 117, 23" },
-  { label: "HTML", color: "29, 158, 117" },
-  { label: "CSS", color: "212, 83, 126" },
-  { label: "Git", color: "56, 138, 221" },
+// ---------------------------------------------------------------------------
+// A trimmed, "wanted skills only" list - easy to add/remove, one flat array
+// used everywhere (marquee + physics, mobile + desktop). Colors are the
+// reference site's solid fills, pulled via computed-style inspection.
+// ---------------------------------------------------------------------------
+const PILLS = [
+  { label: "Frontend Developer", color: "163, 217, 255", icon: Code2 },
+  { label: "Full-Stack Developer", color: "255, 137, 74", icon: Layers },
+  { label: "React", color: "217, 201, 255", icon: Atom },
+  { label: "JavaScript", color: "253, 207, 0", icon: Braces },
+  { label: "UI / UX Design", color: "251, 207, 232", icon: PenTool },
+  { label: "WordPress", color: "90, 219, 165", icon: Globe },
+  { label: "Python", color: "217, 249, 157", icon: Terminal },
+  { label: "Git", color: "163, 217, 255", icon: GitBranch },
+  { label: "Shopify Expert", color: "255, 137, 74", icon: ShoppingBag },
 ];
 
-const rowTwo = [
-  { label: "UI / UX Design", color: "29, 158, 117" },
-  { label: "Shopify Expert", color: "186, 117, 23" },
-  { label: "WooCommerce", color: "212, 83, 126" },
-  { label: "WordPress", color: "127, 119, 221" },
-  { label: "Python", color: "216, 90, 48" },
-  { label: "Django", color: "56, 138, 221" },
-  { label: "PHP", color: "29, 158, 117" },
-  { label: "MySQL", color: "186, 117, 23" },
+// Icon-only accent circles - now part of the marquee itself (not physics-only)
+// so they scroll inline with the pills, the way the reference intersperses them.
+const BADGES = [
+  { icon: Coffee, color: "217, 201, 255", size: 44 },
+  { icon: MousePointer2, color: "255, 137, 74", size: 40 },
+  { icon: CircleCheck, color: "163, 217, 255", size: 42 },
+  { icon: Sparkle, color: "253, 207, 0", size: 36 },
+  { icon: Sparkles, color: "244, 244, 245", size: 40 },
+  { icon: Share2, color: "24, 24, 27", size: 40, invert: true },
 ];
 
-const allPills = [...rowOne, ...rowTwo];
+// Interleave badges through the pills (roughly one badge every 3 pills) so
+// the marquee reads as one rhythmic strip, not "pills, then badges after".
+function buildTrack() {
+  const track = [];
+  let bi = 0;
+  PILLS.forEach((p, i) => {
+    track.push({ ...p, kind: "pill", key: `pill-${p.label}` });
+    if ((i + 1) % 3 === 0 && bi < BADGES.length) {
+      track.push({ ...BADGES[bi], kind: "badge", key: `badge-${bi}` });
+      bi += 1;
+    }
+  });
+  while (bi < BADGES.length) {
+    track.push({ ...BADGES[bi], kind: "badge", key: `badge-${bi}` });
+    bi += 1;
+  }
+  return track;
+}
+const TRACK = buildTrack();
 
 export default function MarqueeToPhysics() {
   const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [mode, setMode] = useState("marquee");
+  const [reducedMotion, setReducedMotion] = useState(false);
   const rootRef = useRef(null);
   const stageRef = useRef(null);
   const bodiesRef = useRef([]);
   const elsRef = useRef([]);
   const pillRefs = useRef([]);
-  const rafRef = useRef(null);
   const capturedRef = useRef({});
+  const zCounterRef = useRef(1);
   const dragRef = useRef({ active: null, lastPos: null, lastTime: 0, vx: 0, vy: 0 });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const onChange = (e) => setReducedMotion(e.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
 
   // Trigger: capture each pill's REAL current position before switching modes
   useEffect(() => {
@@ -44,7 +96,8 @@ export default function MarqueeToPhysics() {
       if (top <= 0) {
         const stageRect = rootRef.current.getBoundingClientRect();
         const positions = {};
-        allPills.forEach((p) => {
+        TRACK.forEach((p) => {
+          if (!p.label) return;
           const candidates = rootRef.current.querySelectorAll(`[data-label="${CSS.escape(p.label)}"]`);
           const visibleEl = Array.from(candidates).find((el) => el.offsetParent !== null);
           if (visibleEl) {
@@ -66,11 +119,15 @@ export default function MarqueeToPhysics() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [mode]);
 
-  // Physics init - retries until the stage actually has real dimensions
+  // Physics init - retries until the stage actually has real dimensions.
+  // No rotation, no rigid-body tumbling - just a clean, predictable fall
+  // with gentle non-overlapping separation, matched to real elapsed time
+  // so the speed is identical on a 60Hz laptop and a 120Hz phone.
   useEffect(() => {
     if (mode !== "physics") return;
     let cancelled = false;
     let rafId;
+    let lastTs = null;
 
     function tryInit() {
       if (cancelled) return;
@@ -81,37 +138,47 @@ export default function MarqueeToPhysics() {
       }
 
       const W = stage.clientWidth;
-      bodiesRef.current = allPills.map((p) => {
-        const captured = capturedRef.current[p.label];
+      const smallScreen = W < 480;
+      bodiesRef.current = TRACK.map((p, i) => {
+        const captured = p.label ? capturedRef.current[p.label] : null;
+        const badgeSize = p.kind === "badge" ? (smallScreen ? p.size * 0.85 : p.size) : null;
+        const w = captured ? captured.w : p.kind === "badge" ? badgeSize : 90 + p.label.length * 6;
+        const h = captured ? captured.h : p.kind === "badge" ? badgeSize : 36;
         return {
           ...p,
-          x: captured ? captured.x : 60 + Math.random() * Math.max(1, W - 220),
-          y: captured ? captured.y : -80 - Math.random() * 400,
-          vx: 0,
+          x: captured ? captured.x : 40 + Math.random() * Math.max(1, W - (w + 40)),
+          y: captured ? captured.y : -80 - Math.random() * 500,
+          vx: (Math.random() - 0.5) * 0.6,
           vy: 0,
-          w: captured ? captured.w : 90 + p.label.length * 6,
-          h: captured ? captured.h : 36,
-          rot: 0,
+          w,
+          h,
           dragging: false,
+          z: i + 1,
         };
       });
+      zCounterRef.current = bodiesRef.current.length + 1;
 
-      const GRAVITY = 0.16;
-      const MAX_FALL_SPEED = 9;
+      const GRAVITY = 0.22; // px per ms^2-ish, scaled by dt below - tuned for a brisk, satisfying fall
+      const MAX_FALL_SPEED = 13;
       const FRICTION = 0.985;
-      const REST = 0.22;
+      const REST = 0.24;
 
-      function step() {
+      function step(ts) {
+        if (lastTs == null) lastTs = ts;
+        // dt = 1 at a perfect 60fps frame; keeps speed identical across refresh rates
+        const dt = Math.min((ts - lastTs) / (1000 / 60), 3);
+        lastTs = ts;
+
         const w = stage.clientWidth;
         const h = stage.clientHeight;
         const list = bodiesRef.current;
 
         list.forEach((b) => {
           if (b.dragging) return;
-          b.vy = Math.min(b.vy + GRAVITY, MAX_FALL_SPEED);
-          b.vx *= FRICTION;
-          b.x += b.vx;
-          b.y += b.vy;
+          b.vy = Math.min(b.vy + GRAVITY * dt, MAX_FALL_SPEED);
+          b.vx *= Math.pow(FRICTION, dt);
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
 
           if (b.y + b.h > h) {
             b.y = h - b.h;
@@ -122,26 +189,27 @@ export default function MarqueeToPhysics() {
           if (b.x + b.w > w) { b.x = w - b.w; b.vx = -Math.abs(b.vx) * REST; }
         });
 
-        // Gentle, capped separation - no single-frame jumps even when densely packed
+        // Gentle, capped separation - keeps pills readable and non-overlapping,
+        // no single-frame jumps even when densely packed.
         for (let i = 0; i < list.length; i++) {
           for (let j = i + 1; j < list.length; j++) {
-            const a = list[i], b = list[j];
-            const dx = (b.x + b.w / 2) - (a.x + a.w / 2);
-            const dy = (b.y + b.h / 2) - (a.y + a.h / 2);
+            const a = list[i], b2 = list[j];
+            const dx = (b2.x + b2.w / 2) - (a.x + a.w / 2);
+            const dy = (b2.y + b2.h / 2) - (a.y + a.h / 2);
             const dist = Math.hypot(dx, dy) || 1;
-            const minDist = (a.w + b.w) / 4;
+            const minDist = (a.w + b2.w) / 4;
             if (dist < minDist) {
-              const overlap = Math.min(((minDist - dist) / 2) * 0.15, 1.5);
+              const overlap = Math.min(((minDist - dist) / 2) * 0.15 * dt, 1.5);
               const nx = dx / dist, ny = dy / dist;
               if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
-              if (!b.dragging) { b.x += nx * overlap; b.y += ny * overlap; }
+              if (!b2.dragging) { b2.x += nx * overlap; b2.y += ny * overlap; }
             }
           }
         }
 
         list.forEach((b, i) => {
           const el = elsRef.current[i];
-          if (el) el.style.transform = `translate(${b.x}px, ${b.y}px) rotate(${b.rot}deg)`;
+          if (el) el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`;
         });
 
         rafId = requestAnimationFrame(step);
@@ -164,6 +232,10 @@ export default function MarqueeToPhysics() {
     const body = bodiesRef.current[index];
     if (!body) return;
     body.dragging = true;
+    zCounterRef.current += 1;
+    body.z = zCounterRef.current;
+    const el = elsRef.current[index];
+    if (el) el.style.zIndex = body.z;
     dragRef.current.active = body;
     const p = getPoint(e);
     dragRef.current.lastPos = p;
@@ -213,7 +285,7 @@ export default function MarqueeToPhysics() {
   useEffect(() => {
     if (mode !== "physics") return;
     const handlers = [];
-    allPills.forEach((p, i) => {
+    TRACK.forEach((p, i) => {
       const el = pillRefs.current[i];
       if (!el) return;
       const handler = (e) => onPointerDown(e, i);
@@ -225,52 +297,78 @@ export default function MarqueeToPhysics() {
     };
   }, [mode, onPointerDown]);
 
-  const glassPill = (rgb) => ({
-    background: theme === "dark" ? `rgba(${rgb}, 0.22)` : `rgba(${rgb}, 0.14)`,
-    border: theme === "dark" ? `1px solid rgba(${rgb}, 0.45)` : `1px solid rgba(${rgb}, 0.3)`,
-    color: theme === "dark" ? "#fff" : `rgb(${rgb})`,
-    backdropFilter: "blur(10px) saturate(160%)",
-    WebkitBackdropFilter: "blur(10px) saturate(160%)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)",
-  });
+  // Solid-fill surface, matched to the reference: same vivid background in
+  // both themes. Only the text/icon color adapts - near-black in light mode,
+  // a soft zinc gradient in dark mode so it stays legible without turning
+  // the chip into a glow.
+  const surface = useCallback((rgb, opts = {}) => {
+    if (opts.invert) {
+      return {
+        background: "rgb(24, 24, 27)",
+        color: isDark ? "#e4e4e7" : "#fafafa",
+        boxShadow: "0 10px 22px -8px rgba(0,0,0,0.4)",
+      };
+    }
+    return {
+      background: `rgb(${rgb})`,
+      color: isDark ? "#3f3f46" : "#0a0a0a",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.06), 0 10px 20px -8px rgba(0,0,0,0.18)",
+    };
+  }, [isDark]);
+
+  // Dark-mode label text gets a subtle zinc gradient instead of flat color;
+  // the icon (sibling element) keeps the solid `surface().color` above.
+  const labelStyle = isDark
+    ? {
+        backgroundImage: "linear-gradient(135deg, #52525b, #18181b)",
+        WebkitBackgroundClip: "text",
+        backgroundClip: "text",
+        color: "transparent",
+        WebkitTextFillColor: "transparent",
+      }
+    : {};
+
+  const pillFont = {
+    fontFamily: '"Geist Mono", ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace',
+  };
+
+  const PillContent = ({ Icon, label }) => (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap uppercase">
+      <span style={labelStyle}>{label}</span>
+      {Icon && <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" strokeWidth={2.25} />}
+    </span>
+  );
+
+  const marqueeAnim = reducedMotion ? {} : { animation: "marquee-left 26s linear infinite" };
 
   return (
     <div ref={rootRef} className="absolute inset-0 w-full h-full overflow-hidden transition-colors duration-500">
       {mode === "marquee" && (
         <div className="absolute top-0 left-0 w-full flex flex-col gap-4 py-6">
-          <div className="flex md:hidden gap-4 whitespace-nowrap animate-[marquee-left_22s_linear_infinite]">
-            {[...rowOne, ...rowOne].map((p, i) => (
+          <div
+            className="flex gap-3 sm:gap-4 whitespace-nowrap will-change-transform"
+            style={marqueeAnim}
+          >
+            {[...TRACK, ...TRACK].map((p, i) => (
               <span
-                key={i}
-                data-label={i < rowOne.length ? p.label : undefined}
-                className="px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
-                style={glassPill(p.color)}
+                key={`${p.key}-${i}`}
+                data-label={i < TRACK.length ? p.label : undefined}
+                className={
+                  p.kind === "badge"
+                    ? "rounded-full flex items-center justify-center shrink-0 transition-colors duration-500"
+                    : "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
+                }
+                style={{
+                  ...surface(p.color, { invert: p.invert }),
+                  ...(p.kind === "pill" ? pillFont : {}),
+                  ...(p.kind === "badge" ? { width: p.size, height: p.size } : {}),
+                }}
               >
-                {p.label}
-              </span>
-            ))}
-          </div>
-          <div className="flex md:hidden gap-4 whitespace-nowrap animate-[marquee-right_26s_linear_infinite]">
-            {[...rowTwo, ...rowTwo].map((p, i) => (
-              <span
-                key={i}
-                data-label={i < rowTwo.length ? p.label : undefined}
-                className="px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
-                style={glassPill(p.color)}
-              >
-                {p.label}
-              </span>
-            ))}
-          </div>
-          <div className="hidden md:flex gap-4 whitespace-nowrap animate-[marquee-left_32s_linear_infinite]">
-            {[...allPills, ...allPills].map((p, i) => (
-              <span
-                key={i}
-                data-label={i < allPills.length ? p.label : undefined}
-                className="px-5 py-2.5 rounded-full text-sm font-medium shrink-0 transition-colors duration-500"
-                style={glassPill(p.color)}
-              >
-                {p.label}
+                {p.kind === "badge" ? (
+                  <p.icon className="w-1/2 h-1/2" strokeWidth={2.25} />
+                ) : (
+                  <PillContent Icon={p.icon} label={p.label} />
+                )}
               </span>
             ))}
           </div>
@@ -278,28 +376,39 @@ export default function MarqueeToPhysics() {
       )}
 
       {mode === "physics" && (
-  <div ref={stageRef} className="absolute inset-0">
-    {allPills.map((p, i) => (
-      <div
-        key={p.label}
-        ref={(el) => {
-          elsRef.current[i] = el;
-          pillRefs.current[i] = el;
-        }}
-        onMouseDown={(e) => onPointerDown(e, i)}
-        className="absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
-        style={{
-          ...glassPill(p.color),
-          touchAction: "none",
-          WebkitUserSelect: "none",
-          WebkitTapHighlightColor: "transparent",
-        }}
-      >
-        {p.label}
-      </div>
-    ))}
-  </div>
-)}
+        <div ref={stageRef} className="absolute inset-0">
+          {TRACK.map((p, i) => (
+            <div
+              key={p.key}
+              ref={(el) => {
+                elsRef.current[i] = el;
+                pillRefs.current[i] = el;
+              }}
+              onMouseDown={(e) => onPointerDown(e, i)}
+              className={
+                p.kind === "badge"
+                  ? "absolute top-0 left-0 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
+                  : "absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
+              }
+              style={{
+                ...surface(p.color, { invert: p.invert }),
+                ...(p.kind === "pill" ? pillFont : {}),
+                ...(p.kind === "badge" ? { width: p.size, height: p.size } : {}),
+                touchAction: "none",
+                WebkitUserSelect: "none",
+                WebkitTapHighlightColor: "transparent",
+                willChange: "transform",
+              }}
+            >
+              {p.kind === "badge" ? (
+                <p.icon className="w-1/2 h-1/2" strokeWidth={2.25} />
+              ) : (
+                <PillContent Icon={p.icon} label={p.label} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
