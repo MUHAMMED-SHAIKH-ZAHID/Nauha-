@@ -19,7 +19,9 @@ const variants = [
   { text: "Nauha", lang: "en", className: "font-display" },
   { text: "نوها", lang: "ar", dir: "rtl", className: "font-arabic" },
   { text: "नौहा", lang: "hi", className: "font-hindi" },
+  { text: "നൗഹ", lang: "ml", className: "font-malayalam" }, // her own mother tongue - Kerala
   { text: "娜哈", lang: "zh", className: "font-chinese" },
+  { text: "Nauha", lang: "fr", className: "font-display italic" },
   { text: "ナウハ", lang: "ja", className: "font-japanese" },
   { text: "나우하", lang: "ko", className: "font-korean" },
   { text: "Науха", lang: "ru", className: "font-cyrillic" },

@@ -693,7 +693,7 @@ export default function FooterGarden() {
 }, [theme, soundOn]);
 
   return (
-    <div id="playground" className="relative bg-white !dark:bg-black w-full h-[380px] sm:h-[460px] rounded-t-l overflow-hidden">
+    <div id="playground" className="relative bg-white !dark:bg-black w-full h-[380px] sm:h-[460px] rounded-t-3xl overflow-hidden">
       <canvas ref={canvasRef} className="absolute  bg-white dark:bg-black inset-0 w-full h-full cursor-crosshair" />
       <audio
   ref={audioRef}
@@ -701,17 +701,7 @@ export default function FooterGarden() {
   src={theme === "dark" ? "/audio/ambient-garden-night.mp3" : "/audio/ambient-garden-day.mp3"}
 />
 
-      <div
-        className="absolute  bg-white dark:bg-black inset-0 z-10 flex flex-col items-center pt-8 sm:pt-10 px-4 text-center pointer-events-none transition-opacity duration-500"
-        style={{ opacity: textHidden ? 0 : 1 }}
-      >
-        <p className="font-thin-serif italic text-xl sm:text-2xl mb-1" style={{ color: "#2a2015" }}>{greeting}</p>
-        <p className="text-xs sm:text-sm" style={{ color: "#5a4d3a" }}>Move your cursor near the ground. Hold to grow faster.</p>
-        <p className="text-xs mt-2 transition-opacity duration-1000" style={{ color: "#5a4d3a", opacity: hiddenMsgVisible ? 1 : 0 }}>
-          You've planted quite a garden.
-        </p>
-      </div>
-
+    
       <button
         onClick={toggleSound}
         aria-label={soundOn ? "Mute ambient sound" : "Play ambient sound"}

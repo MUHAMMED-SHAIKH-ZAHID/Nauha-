@@ -15,7 +15,10 @@ export default function App() {
       <SelectedWork />
       <TextMarqueeSection />
       <ContactIconsPhysics /> 
+      <div className="bg-white dark:bg-black">
+
       <FooterGarden />
+      </div>
   
     </>
   );
