@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../context/ThemeContext";
 import {
   Code2,
@@ -65,18 +65,37 @@ function buildTrack() {
   return track;
 }
 const TRACK = buildTrack();
+const MARQUEE_DURATION_S = 26; // must match the `marquee-left` keyframe duration below
 
 export default function MarqueeToPhysics() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [mode, setMode] = useState("marquee");
   const [reducedMotion, setReducedMotion] = useState(false);
+  // Tracked once, in render, and reused for marquee, physics-init AND the
+  // physics render - previously the "shrink on small screens" factor only
+  // existed inside tryInit()'s math (used for collision sizing) while the
+  // badge's actual on-screen style always used the full `p.size`, and pills
+  // had no small-screen shrink at all. That's why the marquee looked bigger
+  // than what dropped: the two modes were reading from different sources of
+  // truth. Now there's exactly one.
+  const [smallScreen, setSmallScreen] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 480 : false
+  );
   const rootRef = useRef(null);
+  const rowRef = useRef(null);
   const stageRef = useRef(null);
   const bodiesRef = useRef([]);
   const elsRef = useRef([]);
   const pillRefs = useRef([]);
   const capturedRef = useRef({});
+  // Apple's "velocity handoff": a gesture (or here, an ambient motion) that
+  // gets interrupted should hand its momentum to whatever takes over, not
+  // reset to a standstill. Right before freezing the marquee we measure how
+  // fast it was actually moving and carry that speed into each chip's
+  // initial fall velocity, so the strip visibly keeps drifting left as it
+  // drops instead of just stopping dead and dropping straight down.
+  const marqueeVxRef = useRef(0);
   const zCounterRef = useRef(1);
   const dragRef = useRef({ active: null, lastPos: null, lastTime: 0, vx: 0, vy: 0 });
 
@@ -87,6 +106,24 @@ export default function MarqueeToPhysics() {
     mq.addEventListener?.("change", onChange);
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
+
+  // Same breakpoint used everywhere sizing is decided (marquee, physics
+  // init, physics render), so rotating a phone or resizing never leaves one
+  // mode reading a stale size.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    setSmallScreen(mq.matches);
+    const onChange = (e) => setSmallScreen(e.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  // The one place badge diameter is computed - marquee, physics init and
+  // physics render all call this instead of each doing their own math.
+  const badgeSize = useCallback(
+    (p) => (smallScreen ? Math.round(p.size * 0.72) : p.size),
+    [smallScreen]
+  );
 
   // Trigger: capture each pill's REAL current position before switching modes
   useEffect(() => {
@@ -111,6 +148,17 @@ export default function MarqueeToPhysics() {
           }
         });
         capturedRef.current = positions;
+
+        // Measure the strip's actual speed right before freezing it: the
+        // track is rendered twice back-to-back and the keyframe scrolls
+        // exactly one copy's width over MARQUEE_DURATION_S, so
+        // (rendered width / 2) / duration is its true px/s.
+        if (rowRef.current) {
+          const trackWidthPx = rowRef.current.scrollWidth / 2;
+          const speedPxPerSec = trackWidthPx / MARQUEE_DURATION_S;
+          marqueeVxRef.current = -(speedPxPerSec / 60); // px per dt-unit (dt=1 @ 60fps), moving left
+        }
+
         setMode("physics");
       }
     }
@@ -138,17 +186,19 @@ export default function MarqueeToPhysics() {
       }
 
       const W = stage.clientWidth;
-      const smallScreen = W < 480;
       bodiesRef.current = TRACK.map((p, i) => {
         const captured = p.label ? capturedRef.current[p.label] : null;
-        const badgeSize = p.kind === "badge" ? (smallScreen ? p.size * 0.85 : p.size) : null;
-        const w = captured ? captured.w : p.kind === "badge" ? badgeSize : 90 + p.label.length * 6;
-        const h = captured ? captured.h : p.kind === "badge" ? badgeSize : 36;
+        const bSize = p.kind === "badge" ? badgeSize(p) : null;
+        const w = captured ? captured.w : p.kind === "badge" ? bSize : 90 + p.label.length * 6;
+        const h = captured ? captured.h : p.kind === "badge" ? bSize : 36;
         return {
           ...p,
           x: captured ? captured.x : 40 + Math.random() * Math.max(1, W - (w + 40)),
           y: captured ? captured.y : -80 - Math.random() * 500,
-          vx: (Math.random() - 0.5) * 0.6,
+          // Carry over the marquee's real scroll speed (with a touch of per-
+          // chip variance) instead of resetting to near-zero, so the strip
+          // reads as one continuous motion rather than a hard stop-then-drop.
+          vx: marqueeVxRef.current + (Math.random() - 0.5) * 0.5,
           vy: 0,
           w,
           h,
@@ -219,7 +269,7 @@ export default function MarqueeToPhysics() {
 
     tryInit();
     return () => { cancelled = true; cancelAnimationFrame(rafId); };
-  }, [mode]);
+  }, [mode, badgeSize]);
 
   const getPoint = useCallback((e) => {
     const rect = stageRef.current.getBoundingClientRect();
@@ -339,6 +389,25 @@ export default function MarqueeToPhysics() {
     </span>
   );
 
+  // Single source of truth for how a pill/badge looks, used by BOTH the
+  // marquee and the physics render below. Previously each mode kept its own
+  // copy of these class strings; editing one and not the other is exactly
+  // how they drifted out of sync and ended up different sizes. Now there is
+  // only one place to change.
+  const PILL_BASE_CLASS = "px-2.5 py-1 sm:px-5 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-medium shrink-0 transition-colors duration-500";
+  const BADGE_BASE_CLASS = "rounded-full flex items-center justify-center shrink-0 transition-colors duration-500";
+
+  const itemClassName = useCallback((p, extra = "") => {
+    const base = p.kind === "badge" ? BADGE_BASE_CLASS : PILL_BASE_CLASS;
+    return extra ? `${base} ${extra}` : base;
+  }, []);
+
+  const itemStyle = useCallback((p) => ({
+    ...surface(p.color, { invert: p.invert }),
+    ...(p.kind === "pill" ? pillFont : {}),
+    ...(p.kind === "badge" ? { width: badgeSize(p), height: badgeSize(p) } : {}),
+  }), [surface, badgeSize]);
+
   const marqueeAnim = reducedMotion ? {} : { animation: "marquee-left 26s linear infinite" };
 
   return (
@@ -346,23 +415,16 @@ export default function MarqueeToPhysics() {
       {mode === "marquee" && (
         <div className="absolute top-0 left-0 w-full flex flex-col gap-4 py-6">
           <div
-            className="flex gap-3 sm:gap-4 whitespace-nowrap will-change-transform"
+            ref={rowRef}
+            className="flex items-center gap-3 sm:gap-4 whitespace-nowrap will-change-transform"
             style={marqueeAnim}
           >
             {[...TRACK, ...TRACK].map((p, i) => (
               <span
                 key={`${p.key}-${i}`}
                 data-label={i < TRACK.length ? p.label : undefined}
-                className={
-                  p.kind === "badge"
-                    ? "rounded-full flex items-center justify-center shrink-0 transition-colors duration-500"
-                    : "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium shrink-0 transition-colors duration-500"
-                }
-                style={{
-                  ...surface(p.color, { invert: p.invert }),
-                  ...(p.kind === "pill" ? pillFont : {}),
-                  ...(p.kind === "badge" ? { width: p.size, height: p.size } : {}),
-                }}
+                className={itemClassName(p)}
+                style={itemStyle(p)}
               >
                 {p.kind === "badge" ? (
                   <p.icon className="w-1/2 h-1/2" strokeWidth={2.25} />
@@ -385,15 +447,9 @@ export default function MarqueeToPhysics() {
                 pillRefs.current[i] = el;
               }}
               onMouseDown={(e) => onPointerDown(e, i)}
-              className={
-                p.kind === "badge"
-                  ? "absolute top-0 left-0 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
-                  : "absolute top-0 left-0 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium cursor-grab active:cursor-grabbing select-none transition-colors duration-500"
-              }
+              className={itemClassName(p, "absolute top-0 left-0 cursor-grab active:cursor-grabbing select-none")}
               style={{
-                ...surface(p.color, { invert: p.invert }),
-                ...(p.kind === "pill" ? pillFont : {}),
-                ...(p.kind === "badge" ? { width: p.size, height: p.size } : {}),
+                ...itemStyle(p),
                 touchAction: "none",
                 WebkitUserSelect: "none",
                 WebkitTapHighlightColor: "transparent",

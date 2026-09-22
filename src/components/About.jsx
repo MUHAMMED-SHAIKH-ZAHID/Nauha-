@@ -1,16 +1,22 @@
 import React from 'react'
 import MarqueeToPhysics from './MarqueeToPhysics'
 import { motion } from "framer-motion";
+import { ArrowUpRight } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import portraitImg from "../assets/Images/nilu_4x.webp";
 import HangingBadge from './HangingBadge';
+import StackRow from './Stackrow';
 
+// Spring-based instead of a plain easeOut tween, so this section's entrance
+// matches the same physical, springy motion language used everywhere else
+// on the site (Hero, Navbar, Contact) rather than feeling like a separate,
+// flatter animation system bolted on.
 const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 24 },
   visible: (i = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.08, duration: 0.6, ease: "easeOut" },
+    transition: { delay: i * 0.08, type: "spring", stiffness: 170, damping: 22, mass: 0.9 },
   }),
 };
 
@@ -45,28 +51,59 @@ const projects = [
   { name: "Greenfin India", stack: "WooCommerce", href: "https://greenfinindia.com/" },
 ];
 
+// Shared hover treatment for the Experience/Education rows: a thin accent
+// bar that draws in from the top on hover, and the row nudging slightly to
+// the right - small, quiet feedback that these are worth lingering on, not
+// just static text. Kept in one place so every list in this section moves
+// the same way.
+function ListRow({ title, subtitle, meta, children }) {
+  return (
+    <div className="group relative pl-4 -ml-4 py-0.5 transition-transform duration-300 ease-out hover:translate-x-1">
+      <span
+        aria-hidden="true"
+        className="absolute left-0 top-0.5 bottom-0.5 w-[2px] origin-top scale-y-0 rounded-full
+                   bg-black/15 dark:bg-white/20 transition-transform duration-300 ease-out
+                   group-hover:scale-y-100"
+      />
+      <p className="text-sm sm:text-[15px] font-bold text-black dark:text-white">{title}</p>
+      {subtitle && <p className="text-sm text-black/70 dark:text-white/70">{subtitle}</p>}
+      {meta && <p className="text-xs text-black/50 dark:text-white/50 mt-1">{meta}</p>}
+      {children}
+    </div>
+  );
+}
+
 export default function About() {
   const { theme } = useTheme();
 
   return (
-    <section className="relative w-full px-6 sm:px-10 pb-18  bg-[#fffdf9] dark:bg-black transition-colors duration-500">
-      <MarqueeToPhysics />
-          {/* Heading */}
+    <section className="relative w-full px-6 sm:px-10 pb-18 bg-[#fffdf9] dark:bg-black transition-colors duration-500">
+      {/* MarqueeToPhysics renders itself as `absolute inset-0` - it fills
+          whatever positioned box it's given. Before, it had no box of its
+          own here (just this <section>, whose height is set entirely by
+          the About content below it), so the marquee was silently
+          stretching to the FULL height of the entire About section - its
+          "floor" ended up wherever the page happened to end, not a few rem
+          below the pills. Giving it its own sized, relative wrapper is what
+          actually fixes that; nothing about where it visually sits changes. */}
+   
+        <MarqueeToPhysics />
      
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
         {/* Left column: bio + services + lists */}
-              <div>
-                   <motion.h2
-        custom={0}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true }}
-        variants={fadeUp}
-        className="font-display pt-18 font-black uppercase leading-[0.85] text-black dark:text-white text-[clamp(3.5rem,12vw,9rem)] mb-10"
-      >
-        About
-      </motion.h2>
+        <div>
+          <motion.h2
+            custom={0}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeUp}
+            className="font-display pt-20 font-black uppercase leading-[0.85] text-black dark:text-white text-[clamp(3.5rem,12vw,9rem)] mb-10"
+          >
+            About
+          </motion.h2>
+
           <motion.div
             custom={1}
             initial="hidden"
@@ -101,9 +138,26 @@ export default function About() {
             </div>
           </motion.div>
 
-          {/* Experience */}
+          {/* Tech Stack - moved here from the very top of the section (where
+              it sat as a lone floating row jammed under the marquee, before
+              any heading even appeared) into the same label/content rhythm
+              as Services, Experience and Education. Reads naturally in this
+              order too: what she does, then what she builds it with. */}
           <motion.div
             custom={3}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeUp}
+            className="grid grid-cols-[100px_1fr] sm:grid-cols-[140px_1fr] gap-4 mt-12 items-start"
+          >
+            <p className="text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase pt-2">Tech Stack</p>
+            <StackRow showLabel={false} />
+          </motion.div>
+
+          {/* Experience */}
+          <motion.div
+            custom={4}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
@@ -113,18 +167,14 @@ export default function About() {
             <p className="text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Experience</p>
             <div className="space-y-6">
               {experience.map((e) => (
-                <div key={e.role}>
-                  <p className="text-sm sm:text-[15px] font-bold text-black dark:text-white">{e.role}</p>
-                  <p className="text-sm text-black/70 dark:text-white/70">{e.company} · {e.dates}</p>
-                  <p className="text-xs text-black/50 dark:text-white/50 mt-1">{e.location}</p>
-                </div>
+                <ListRow key={e.role} title={e.role} subtitle={`${e.company} · ${e.dates}`} meta={e.location} />
               ))}
             </div>
           </motion.div>
 
           {/* Education */}
           <motion.div
-            custom={4}
+            custom={5}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
@@ -134,45 +184,14 @@ export default function About() {
             <p className="text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Education</p>
             <div className="space-y-4">
               {education.map((ed) => (
-                <div key={ed.degree}>
-                  <p className="text-sm sm:text-[15px] font-bold text-black dark:text-white">{ed.degree}</p>
-                  <p className="text-sm text-black/70 dark:text-white/70">{ed.institution} · {ed.dates}</p>
-                </div>
+                <ListRow key={ed.degree} title={ed.degree} subtitle={`${ed.institution} · ${ed.dates}`} />
               ))}
             </div>
           </motion.div>
-
-          {/* Projects — replaces the reference's Certifications slot, since she has real project links instead */}
-          {/* <motion.div
-            custom={5}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            variants={fadeUp}
-            className="grid grid-cols-[100px_1fr] sm:grid-cols-[140px_1fr] gap-4 mt-12"
-          >
-            <p className="text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Projects</p>
-            <div className="space-y-4">
-              {projects.map((p) => (
-                <div key={p.name}>
-                  <a
-                    href={p.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm sm:text-[15px] font-bold text-black dark:text-white underline underline-offset-2 hover:opacity-70 transition-opacity"
-                  >
-                    {p.name}
-                  </a>
-                  <p className="text-sm text-black/70 dark:text-white/70">{p.stack}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div> */}
         </div>
 
         {/* Right column: portrait, matching reference's offset image */}
-       
-          <HangingBadge />
+        <HangingBadge />
       </div>
     </section>
   );
