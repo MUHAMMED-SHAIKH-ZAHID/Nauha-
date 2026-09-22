@@ -108,21 +108,19 @@ function ScrollRevealText({ text, className }) {
 
 export default function About() {
   return (
-    <section className="relative w-full bg-[#fffdf9] dark:bg-black transition-colors duration-500">
+    <section id="about" className="relative w-full bg-[#fffdf9] dark:bg-black transition-colors duration-500">
       {/* MarqueeToPhysics renders itself as `absolute inset-0` - it fills
           whatever positioned box it's given, so it needs a real sized,
           relative wrapper here or it silently stretches to the height of
           the entire section instead of sitting in a compact strip. Bleeds
           to the true viewport edge regardless of the section's own
           padding, so it still reads as a full-width band. */}
-      <div className="relative h-32 sm:h-36 md:h-40 -mx-6 sm:-mx-8 md:-mx-12 lg:-mx-16 overflow-hidden">
         <MarqueeToPhysics />
-      </div>
 
       {/* Generous but capped horizontal padding, and a max-width so the
           content doesn't stretch edge-to-edge and thin out on very wide
           screens - the actual fix for "too little padding on md+". */}
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 md:px-12 lg:px-16 pb-16 sm:pb-20 md:pb-24">
+      <div className="max-w-7xl  mx-auto px-6 sm:px-8 md:px-12 lg:px-16 pb-16 sm:pb-20 md:pb-24">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 lg:gap-16">
           {/* Left column: bio + services + lists */}
           <div>
@@ -132,7 +130,7 @@ export default function About() {
               whileInView="visible"
               viewport={{ once: true }}
               variants={fadeUp}
-              className="font-display pt-10 sm:pt-12 font-black uppercase leading-[0.85] text-black dark:text-white text-[clamp(3rem,10vw,7rem)] mb-6"
+              className="font-display pt-18 lg:pt-20 font-black uppercase leading-[0.85] text-black dark:text-white text-[clamp(3rem,10vw,7rem)] mb-6"
             >
               About
             </motion.h2>

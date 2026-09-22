@@ -11,10 +11,8 @@ import {
   PenTool,
   GitBranch,
   Terminal,
-  Sparkles,
   MessageCircle,
   Braces,
-  Layers,
   Code2,
 } from "lucide-react";
 
@@ -44,10 +42,8 @@ const TOOLS = [
   { name: "Figma", icon: PenTool, bg: "#0ACF83" },
   { name: "GitHub", icon: GitBranch, bg: "#171515" },
   { name: "VS Code", icon: Terminal, bg: "#007ACC" },
-  { name: "Framer", icon: Sparkles, bg: "#0055FF" },
   { name: "Slack", icon: MessageCircle, bg: "#611F69" },
   { name: "ChatGPT", icon: Braces, bg: "#10A37F" },
-  { name: "Linear", icon: Layers, bg: "#5E6AD2" },
   { name: "Design", icon: Code2, bg: "#F45B69" },
 ];
 
@@ -124,7 +120,7 @@ export default function StackRow({ tools = TOOLS, label = "My stack", showLabel 
 
       {/* Top padding still reserves room for the tooltip that rises above
           the icons even with no text label above them. */}
-      <div className="flex items-center" style={{ paddingTop: 28 }}>
+      <div className="flex items-center" style={{ paddingTop: 2 }}>
         {tools.map((tool, i) => {
           const s = stateFor(i);
           const isHovered = hovered === i;

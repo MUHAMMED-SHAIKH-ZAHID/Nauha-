@@ -5,8 +5,8 @@ import portraitImg from "../assets/Images/bw-nilu.webp";
 
 const SEGMENTS = 9;
 const ROPE_LENGTH = 280;
-const GRAVITY = 0.45;
-const DAMPING = 0.85; // lower = kills bounce/oscillation much faster after release
+const GRAVITY = 0.75;
+const DAMPING = 0.9; // lower = kills bounce/oscillation much faster after release
 const CONSTRAINT_ITER = 30;
 const CLICK_THRESHOLD = 6; // px of movement that separates "a tap" (flip the badge) from "a drag"
 

@@ -693,8 +693,8 @@ export default function FooterGarden() {
 }, [theme, soundOn]);
 
   return (
-    <div className="relative w-full h-[380px] sm:h-[460px] rounded-t-3xl overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-crosshair" />
+    <div id="playground" className="relative bg-white !dark:bg-black w-full h-[380px] sm:h-[460px] rounded-t-l overflow-hidden">
+      <canvas ref={canvasRef} className="absolute  bg-white dark:bg-black inset-0 w-full h-full cursor-crosshair" />
       <audio
   ref={audioRef}
   loop
@@ -702,7 +702,7 @@ export default function FooterGarden() {
 />
 
       <div
-        className="absolute inset-0 z-10 flex flex-col items-center pt-8 sm:pt-10 px-4 text-center pointer-events-none transition-opacity duration-500"
+        className="absolute  bg-white dark:bg-black inset-0 z-10 flex flex-col items-center pt-8 sm:pt-10 px-4 text-center pointer-events-none transition-opacity duration-500"
         style={{ opacity: textHidden ? 0 : 1 }}
       >
         <p className="font-thin-serif italic text-xl sm:text-2xl mb-1" style={{ color: "#2a2015" }}>{greeting}</p>

@@ -6,9 +6,6 @@ import bgVideoDark from "../assets/videos/bg-dark.mp4";
 import bgVideoLight from "../assets/videos/bg-yellow.mp4";
 import { useTheme } from "../context/ThemeContext";
 
-// Spring by default (matches the rest of the site's motion language) - falls
-// back to a plain, shorter fade for reduced-motion instead of skipping the
-// entrance transition entirely.
 function useFadeUp(reduceMotion) {
   return {
     hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 24 },
@@ -23,10 +20,20 @@ function useFadeUp(reduceMotion) {
   };
 }
 
-// Same "liquid glass" material used across the rest of the site (nav, etc.):
-// a soft top highlight, tuned blur+saturation per theme, so the mobile
-// badge/name/role cards read as one consistent design system rather than a
-// plain frosted box. Positions/sizes are untouched - only the surface.
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < breakpoint : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 function heroGlass(theme) {
   const dark = theme === "dark";
   return {
@@ -46,6 +53,7 @@ export default function Hero() {
   const { theme } = useTheme();
   const reduceMotion = useReducedMotion();
   const fadeUp = useFadeUp(reduceMotion);
+  const isMobile = useIsMobile();
 
   const sectionRef = useRef(null);
   const imgRef = useRef(null);
@@ -74,10 +82,6 @@ export default function Hero() {
     };
   }, []);
 
-  // Both videos stay mounted so switching themes crossfades smoothly instead
-  // of unmounting/reloading (the old `key={theme}` remount caused a visible
-  // black-frame flash + rebuffer every toggle). The inactive one is paused
-  // to save battery/CPU once its fade-out finishes.
   useEffect(() => {
     if (reduceMotion) {
       darkVideoRef.current?.pause();
@@ -96,21 +100,12 @@ export default function Hero() {
       ref={sectionRef}
       className="relative isolate h-screen w-full overflow-hidden m-0 p-0 bg-[#fffdf9] dark:bg-black transition-colors duration-500"
     >
-      {/* Background video - two layers, crossfaded, never remounted.
-          Hidden entirely under reduced-motion per Apple's guidance against
-          full-viewport moving backgrounds for that preference. */}
       {!reduceMotion && (
         <>
           <video
             ref={lightVideoRef}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            disablePictureInPicture
-            disableRemotePlayback
-            aria-hidden="true"
+            autoPlay loop muted playsInline preload="auto"
+            disablePictureInPicture disableRemotePlayback aria-hidden="true"
             className="absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-700 ease-out"
             style={{ opacity: theme === "dark" ? 0 : 0.3 }}
           >
@@ -118,14 +113,8 @@ export default function Hero() {
           </video>
           <video
             ref={darkVideoRef}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            disablePictureInPicture
-            disableRemotePlayback
-            aria-hidden="true"
+            autoPlay loop muted playsInline preload="auto"
+            disablePictureInPicture disableRemotePlayback aria-hidden="true"
             className="absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-700 ease-out"
             style={{ opacity: theme === "dark" ? 0.3 : 0 }}
           >
@@ -134,19 +123,16 @@ export default function Hero() {
         </>
       )}
 
-      {/* Glow */}
       <div className="absolute z-0 w-[42vw] h-[42vw] max-w-[560px] max-h-[560px] rounded-full bg-amber-200/35 dark:bg-orange-500/15 blur-[11vw] bottom-[-12%] left-[-4%] transition-colors duration-500" />
       <div className="absolute z-0 w-[30vw] h-[30vw] max-w-[420px] max-h-[420px] rounded-full bg-orange-200/30 dark:bg-yellow-400/10 blur-[9vw] bottom-[2%] left-[14%] transition-colors duration-500" />
       <div className="absolute z-0 w-[24vw] h-[24vw] max-w-[340px] max-h-[340px] rounded-full bg-white/50 dark:bg-white/5 blur-[7vw] top-[8%] left-[42%] transition-colors duration-500" />
 
-      {/* One real, accessible heading for screen readers/SEO - the two large
-          serif words below are purely decorative typography split across
-          the portrait, so they're hidden from assistive tech individually. */}
       <h1 className="sr-only">
-        Hey, there — I am {" "}
-        <span>Nauha</span>, Web Designer &amp; Developer
+        Hey, there — I am <span>Nauha</span>, Web Designer &amp; Developer
       </h1>
 
+      {/* "Hey, there" headline sits mid-portrait via headlineTop - stays put,
+          Name now lives well above it near the very top, so the two don't collide */}
       <motion.h2
         aria-hidden="true"
         custom={0}
@@ -170,7 +156,6 @@ export default function Hero() {
         there
       </motion.h2>
 
-      {/* Portrait — decorative background presence only, not content */}
       <motion.img
         ref={imgRef}
         custom={0.3}
@@ -182,83 +167,132 @@ export default function Hero() {
         aria-hidden="true"
         decoding="async"
         fetchPriority="high"
-        className="absolute saturate-0 opacity-10 dark:opacity-[0.15] z-10 bottom-0 left-1/2 -translate-x-1/2 h-[100%] w-auto max-w-none object-contain object-bottom transition-opacity duration-500"
+        className="absolute dark:opacity-[0.15] z-10 bottom-0 left-1/2 -translate-x-1/2 md:h-[100%] h-[80%] w-auto max-w-none object-contain object-bottom transition-opacity duration-500"
       />
 
-      {/* Badge — liquid-glass card on mobile so it's readable over video+photo, plain from sm: up */}
-      <motion.div
-        custom={0.5}
-        initial="hidden"
-        animate="visible"
-        variants={fadeUp}
-        whileHover={reduceMotion ? {} : { y: -2 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="hidden sm:flex absolute z-20 top-[46%] left-[4%] items-center gap-2 rounded-full px-4 py-2 text-[clamp(0.7rem,1vw,0.85rem)]
-                   bg-white text-black shadow-md
-                   dark:bg-white/10 dark:text-white dark:shadow-none
-                   transition-colors duration-500"
-      >
-        <span className="relative flex w-2 h-2 shrink-0" aria-hidden="true">
-          {!reduceMotion && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 dark:bg-orange-300 opacity-75" />
-          )}
-          <span className="relative inline-flex w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400" />
-        </span>
-        <span role="status">Available for new opportunities</span>
-      </motion.div>
+   {/* Name — MOBILE: top, centered. "Web Designer / Developer" now sits
+    directly under it (no longer bottom of screen). Desktop unchanged. */}
+<motion.h4
+  aria-hidden="true"
+  custom={0.4}
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp}
+  className="absolute z-20 hidden md:block
+             top-[5%] left-1/2 -translate-x-1/2 text-center
+             sm:top-auto sm:bottom-[3%] sm:left-[4%] sm:translate-x-0 sm:text-left
+             font-display font-light uppercase leading-[1] tracking-tight text-[clamp(1.9rem,8vw,5rem)]
+             px-3 py-2 rounded-2xl text-black
+             sm:px-0 sm:py-0
+             dark:text-white
+             transition-colors duration-500"
+>
+  I am<br /><NameCycle />
+</motion.h4>
 
-      {/* Specialized text — glass card on mobile, plain from sm: up */}
-      <motion.p
-        custom={0.6}
-        initial="hidden"
-        animate="visible"
-        variants={fadeUp}
-        className="absolute z-20 top-[46%] right-[4%] text-right max-w-[220px] text-[clamp(0.7rem,1vw,0.85rem)]
-                   px-3 py-2 rounded-xl text-black
-                   sm:px-0 sm:py-0
-                   dark:text-white/85
-                   transition-colors duration-500"
-        style={window.innerWidth < 640 ? heroGlass(theme) : undefined}
-      >
-        <span className="sm:hidden">UI / UX</span>
-        <span className="hidden sm:inline">
-          Specialized in Web Design, UX / UI, and Front End Development.
-        </span>
-      </motion.p>
+<motion.h4
+  aria-hidden="true"
+  custom={0.4}
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp}
+  className="
+    absolute z-20 md:hidden
 
-      {/* Name — glass card on mobile only, since this sits right over the portrait there */}
-      <motion.h4
-        aria-hidden="true"
-        custom={0.7}
-        initial="hidden"
-        animate="visible"
-        variants={fadeUp}
-        className="absolute z-20 bottom-[3%] left-[4%] font-display font-light uppercase leading-[1] tracking-tight text-[clamp(2rem,7vw,5rem)]
-                   px-3 py-2 rounded-2xl text-black
-                   sm:px-0 sm:py-0
-                   dark:text-white
-                   transition-colors duration-500"
-        style={window.innerWidth < 640 ? heroGlass(theme) : undefined}
-      >
-        I am<br /><NameCycle />
-      </motion.h4>
+    top-[clamp(32px,6vh,70px)]
+    left-1/2
+    -translate-x-1/2
+    w-max
+    max-w-[90vw]
+    text-center
 
-      {/* Role — same glass treatment, mobile only */}
-      <motion.h3
-        aria-hidden="true"
-        custom={0.85}
-        initial="hidden"
-        animate="visible"
-        variants={fadeUp}
-        className="absolute z-20 bottom-[8%] right-[4%] text-right font-[Cairo] font-bold uppercase tracking-wide leading-tight text-[clamp(0.9rem,2vw,1.5rem)]
-                   px-3 py-2 rounded-xl text-black
-                   sm:px-0 sm:py-0
-                   dark:text-white
-                   transition-colors duration-500"
-        style={window.innerWidth < 640 ? heroGlass(theme) : undefined}
-      >
-        Web<br />Designer<br />Developer
-      </motion.h3>
+    sm:top-auto
+    sm:bottom-[3%]
+    sm:left-[4%]
+    sm:translate-x-0
+    sm:text-left
+    sm:w-auto
+
+    font-display font-light uppercase
+    leading-[1] tracking-tight
+    text-[clamp(1.9rem,8vw,5rem)]
+
+    px-3 py-2 rounded-2xl
+    sm:px-0 sm:py-0
+
+    text-black dark:text-white
+    transition-colors duration-500
+  "
+>
+  I am&nbsp; <NameCycle />
+</motion.h4>
+
+{/* Role — MOBILE: now directly beneath Name at the top, centered, not at
+    the bottom. Desktop: fully unchanged (bottom-right). */}
+<motion.h3
+  aria-hidden="true"
+  custom={0.5}
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp}
+  className="absolute z-20
+             top-[16%] left-1/2 -translate-x-1/2 text-center
+             sm:top-auto sm:bottom-[8%] sm:left-auto sm:right-[4%] sm:translate-x-0 sm:text-right
+             font-[Cairo] font-bold uppercase tracking-wide leading-tight text-[clamp(0.9rem,3.5vw,1.5rem)]
+             px-3 py-2 rounded-xl text-black
+             sm:px-0 sm:py-0
+             dark:text-white
+             transition-colors duration-500"
+  style={isMobile ? heroGlass(theme) : undefined}
+>
+  Web<br />Designer<br />Developer
+</motion.h3>
+
+{/* Badge — MOBILE: bottom-left corner (left-0, bottom ~5%). Desktop unchanged. */}
+<motion.div
+  custom={0.6}
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp}
+  whileHover={reduceMotion ? {} : { y: -2 }}
+  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+  className="absolute z-20
+             bottom-[5%] left-0
+             sm:top-[46%] sm:left-[4%] sm:bottom-auto
+             flex items-center gap-2 rounded-full px-4 py-2 text-[clamp(0.7rem,2.8vw,0.85rem)] sm:text-[clamp(0.7rem,1vw,0.85rem)]
+             bg-white text-black shadow-md
+             dark:bg-white/10 dark:text-white dark:shadow-none
+             transition-colors duration-500"
+>
+  <span className="relative flex w-2 h-2 shrink-0" aria-hidden="true">
+    {!reduceMotion && (
+      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 dark:bg-orange-300 opacity-75" />
+    )}
+    <span className="relative inline-flex w-2 h-2 rounded-full bg-orange-500 dark:bg-orange-400" />
+  </span>
+  <span role="status">Available for new opportunities</span>
+</motion.div>
+
+{/* Specialized text — MOBILE: bottom-right corner (right-0, bottom ~15%). Desktop unchanged. */}
+<motion.p
+  custom={0.7}
+  initial="hidden"
+  animate="visible"
+  variants={fadeUp}
+  className="absolute z-20
+             bottom-[15%] right-2 text-right max-w-[160px]
+             sm:top-[46%] sm:bottom-auto sm:right-[4%] sm:max-w-[220px]
+             text-[clamp(0.65rem,2.6vw,0.8rem)] sm:text-[clamp(0.7rem,1vw,0.85rem)]
+             px-3 py-2 rounded-xl text-black
+             sm:px-0 sm:py-0
+             dark:text-white/85
+             transition-colors duration-500"
+  style={isMobile ? heroGlass(theme) : undefined}
+>
+  Specialized in Web Design, UX / UI, and Front End Development.
+</motion.p>
+
+   
     </section>
   );
 }
