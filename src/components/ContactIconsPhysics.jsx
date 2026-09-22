@@ -41,7 +41,7 @@ const icons = [
   { label: "LinkedIn", href: "https://www.linkedin.com/in/fathima-nauha-p-545a27275/", Icon: LinkedinIcon },
   { label: "Instagram", href: "https://instagram.com/niiluuhh", Icon: InstagramIcon },
   { label: "GitHub", href: "https://github.com/YOUR-HANDLE", Icon: GithubIcon },
-  { label: "WhatsApp", href: "https://wa.me/7736964015", Icon: MessageCircle },
+  { label: "WhatsApp", href: "https://wa.me/+917736964015", Icon: MessageCircle },
   { label: "Resume", href: "/Resume_Nauha.pdf", Icon: FileText },
 ];
 
