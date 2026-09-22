@@ -182,6 +182,28 @@ export default function Navbar() {
 
   const links = ["Work", "Playground", "About"];
   const emailHref = "mailto:fathimanauhap03@gmail.com";
+
+  const handleMobileNavClick = (link) => {
+  setMenuOpen(false);
+
+  const id = link.toLowerCase();
+  const element = document.getElementById(id);
+
+  if (!element) return;
+
+  // Scroll to the section
+  element.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+
+  // Remove the #hash from the URL
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search
+  );
+};
   // Hovering the compressed/scrolled pill reveals the full nav again -
   // compact by default once scrolled, but never more than a hover away.
   const showFull = !scrolled || pillHovered;
@@ -350,15 +372,18 @@ export default function Navbar() {
                 <div key={link} className="flex items-baseline gap-3">
                   <span className="text-xs font-mono text-black/40 dark:text-white/40">0{i + 1}</span>
                   <motion.a
-                    href={`#${link.toLowerCase()}`}
-                    onClick={() => setMenuOpen(false)}
-                    whileHover={reduceMotion ? {} : { x: 8 }}
-                    whileTap={{ scale: 0.97 }}
-                    transition={SPRING}
-                    className="font-serif text-5xl text-black dark:text-white"
-                  >
-                    {link}
-                  </motion.a>
+  href={`#${link.toLowerCase()}`}
+  onClick={(e) => {
+    e.preventDefault();
+    handleMobileNavClick(link);
+  }}
+  whileHover={reduceMotion ? {} : { x: 8 }}
+  whileTap={{ scale: 0.97 }}
+  transition={SPRING}
+  className="font-serif text-5xl text-black dark:text-white"
+>
+  {link}
+</motion.a>
                 </div>
               ))}
 
