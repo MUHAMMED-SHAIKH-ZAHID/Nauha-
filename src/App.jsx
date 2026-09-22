@@ -4,6 +4,7 @@ import TextMarqueeSection from "./components/MarqueeRow";
 import About from "./components/About";
 import ContactIconsPhysics from "./components/ContactIconsPhysics";
 import FooterGarden from "./components/FooterGarden";
+import SelectedWork from "./components/SelectedWork";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Navbar />
       <Hero />
       <About />
+      <SelectedWork />
       <TextMarqueeSection />
       <ContactIconsPhysics /> 
       <FooterGarden />

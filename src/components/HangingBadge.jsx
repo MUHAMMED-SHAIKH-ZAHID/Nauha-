@@ -1,12 +1,22 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
-import portraitImg from "../assets/Images/nilu_4x.webp";
+import { Mail, RotateCw, Check, Copy } from "lucide-react";
+import portraitImg from "../assets/Images/bw-nilu.webp";
 
 const SEGMENTS = 9;
 const ROPE_LENGTH = 280;
 const GRAVITY = 0.45;
 const DAMPING = 0.85; // lower = kills bounce/oscillation much faster after release
 const CONSTRAINT_ITER = 30;
+const CLICK_THRESHOLD = 6; // px of movement that separates "a tap" (flip the badge) from "a drag"
+
+const CONTACT_EMAIL = "fathimanauhap03@gmail.com";
+
+// Warm, neutral accent - replaces the flat corporate blue. Fixed values,
+// not theme ternaries, same "the badge itself looks the same regardless of
+// theme" rule the rest of the site's cards follow.
+const ACCENT = "linear-gradient(90deg, #e3a370, #c97f4c)";
+const ACCENT_SOLID = "#c97f4c";
 
 export default function HangingBadge() {
   const { theme } = useTheme();
@@ -20,6 +30,21 @@ export default function HangingBadge() {
     lastScrollY: typeof window !== "undefined" ? window.scrollY : 0,
     scrollForce: 0,
   });
+
+  // Real functionality, not just decoration: click (not drag) the badge and
+  // it flips over like a real lanyard ID, revealing a "back of badge" side
+  // with a working copy-email action. Dragging still works exactly as
+  // before - the two gestures are told apart the same way ContactSection.jsx
+  // tells a click from a drag (movement distance).
+  const [flipped, setFlipped] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopyEmail(e) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(CONTACT_EMAIL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
 
   const getPoint = useCallback((e) => {
     const rect = containerRef.current.getBoundingClientRect();
@@ -86,6 +111,11 @@ export default function HangingBadge() {
       if (!s.dragging) return;
       s.dragging = false;
       cardRef.current.style.cursor = "grab";
+      // Barely moved -> that was a tap, not a drag: flip the badge instead
+      // of treating it as a physics release.
+      if (s.movedDist < CLICK_THRESHOLD) {
+        setFlipped((f) => !f);
+      }
       const last = s.points[s.points.length - 1];
       // Much lower carry-over than before - it settles like a real weighted
       // object instead of continuing to swing energetically
@@ -181,6 +211,8 @@ export default function HangingBadge() {
   }, [getPoint]);
 
   const dark = theme === "dark";
+  const cardBg = dark ? "#161616" : "#fbfbf9";
+  const cardBorder = dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.08)";
 
   return (
     <div ref={containerRef} className="relative w-full h-[540px] sm:h-[580px] select-none" style={{ touchAction: "none" }}>
@@ -191,41 +223,148 @@ export default function HangingBadge() {
 
       <div
         ref={cardRef}
-        className="absolute top-0 left-0 w-[230px] sm:w-[260px] rounded-2xl overflow-hidden shadow-2xl cursor-grab"
-        style={{
-          background: dark ? "#161616" : "#fbfbf9",
-          border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.08)",
-          transformOrigin: "top center",
-          willChange: "transform",
-        }}
+        className="absolute top-0 left-0 w-[230px] sm:w-[260px] cursor-grab"
+        style={{ transformOrigin: "top center", willChange: "transform" }}
       >
-        {/* Grommet ring where the strap threads through the card - the real connection point */}
-        <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full z-20"
-          style={{
-            background: dark ? "#0a0a0a" : "#eee",
-            border: `2px solid ${dark ? "#555" : "#bbb"}`,
-            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.5)",
-          }}
-        />
+        {/* Lanyard clip - a webbing loop threaded through a metal swivel
+            ring, sitting above the badge and visually taking over from the
+            rope. This is the actual attachment point; the small punched
+            hole on the card body below lines up underneath it. */}
+        <div className="relative z-30 mx-auto w-8 -mb-2 pointer-events-none" aria-hidden="true">
+          <div
+            className="mx-auto w-9 h-4 rounded-t-full"
+            style={{ background: dark ? "#3a3a3a" : "#cfcfcf", border: `1px solid ${dark ? "#555" : "#9a9a9a"}`, borderBottom: "none" }}
+          />
+          <div
+            className="mx-auto -mt-1.5 w-4 h-4 rounded-full"
+            style={{
+              background: dark ? "#161616" : "#fbfbf9",
+              border: `2px solid ${dark ? "#5c5c5c" : "#9a9a9a"}`,
+              boxShadow: "inset 0 1px 2px rgba(0,0,0,0.5)",
+            }}
+          />
+        </div>
 
-        <div className="relative z-10 h-2 w-full mt-6" style={{ background: "#3f6fd0" }} />
+        {/* 3D flip stage: front (photo/name) and back (copy-email action)
+            live as two faces of the same physical card. The rope physics
+            above only ever touches cardRef's own transform (position +
+            sway), so this inner rotateY doesn't fight it. */}
+        <div style={{ perspective: 1400 }}>
+          <div
+            className="relative w-full transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            style={{
+              transformStyle: "preserve-3d",
+              transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+            }}
+          >
+            {/* FRONT FACE - normal document flow, so it's the one that
+                actually establishes the card's height; the back face below
+                just overlays that same box via absolute inset-0. No logos,
+                no monogram, no barcode - just the photo, name and title. */}
+            <div
+              className="relative rounded-2xl overflow-hidden shadow-2xl"
+              style={{ backfaceVisibility: "hidden", background: cardBg, border: cardBorder, pointerEvents: flipped ? "none" : "auto" }}
+              aria-hidden={flipped}
+            >
+              {/* punched hole, lines up with the clip above */}
+              <div
+                className="absolute top-1.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full z-20"
+                style={{ background: dark ? "#0a0a0a" : "#e2e2e2", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.6)" }}
+              />
 
-        <div className="relative z-10 px-4 pt-4">
-          <div className="rounded-lg overflow-hidden" style={{ border: dark ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.1)" }}>
-            <img src={portraitImg} alt="Nauha" className="w-full h-[230px] object-cover object-top" draggable={false} />
+              <div className="relative h-1.5 w-full" style={{ background: ACCENT }} />
+
+              <div className="px-4 pt-4">
+                <div className="rounded-lg overflow-hidden" style={{ border: dark ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.1)" }}>
+                  <img
+                    src={portraitImg}
+                    alt="Nauha"
+                    className="w-full h-[230px] object-cover object-top"
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                  />
+                </div>
+              </div>
+
+              <div className="px-4 pt-3 pb-5 text-center">
+                <p className="font-display font-bold uppercase text-black dark:text-white text-base leading-tight">Nauha</p>
+                <p className="text-xs uppercase tracking-wide mt-0.5" style={{ color: ACCENT_SOLID }}>Software Engineer</p>
+              </div>
+
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: "linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.16) 45%, transparent 60%)" }}
+              />
+            </div>
+
+            {/* BACK FACE - one real action: copy the email. Only tabbable/
+                clickable once flipped. */}
+            <div
+              className="absolute inset-0 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+              style={{
+                backfaceVisibility: "hidden",
+                transform: "rotateY(180deg)",
+                background: cardBg,
+                border: cardBorder,
+                pointerEvents: flipped ? "auto" : "none",
+              }}
+              aria-hidden={!flipped}
+            >
+              <div className="h-1.5 w-full shrink-0" style={{ background: ACCENT }} />
+
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-5">
+                <div
+                  className="grid place-items-center w-11 h-11 rounded-full"
+                  style={{ background: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", color: ACCENT_SOLID }}
+                  aria-hidden="true"
+                >
+                  <Mail size={18} strokeWidth={1.8} />
+                </div>
+
+                <div className="text-center">
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: dark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)" }}>
+                    Get in touch
+                  </p>
+                  <p className="text-[13px] font-medium mt-1" style={{ color: dark ? "#fff" : "#111" }}>{CONTACT_EMAIL}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  tabIndex={flipped ? 0 : -1}
+                  aria-label={copied ? "Email copied" : `Copy email address ${CONTACT_EMAIL}`}
+                  className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-semibold transition-transform hover:scale-[1.04] active:scale-[0.96]"
+                  style={{ background: ACCENT, color: "#fff", boxShadow: "0 6px 16px rgba(201,127,76,0.35)" }}
+                >
+                  {copied ? "Copied" : "Copy email"}
+                  <span className="grid place-items-center w-3.5 h-3.5 shrink-0">
+                    {copied ? <Check size={13} strokeWidth={2.4} /> : <Copy size={12} strokeWidth={2.2} className="opacity-90" />}
+                  </span>
+                </button>
+                <span className="sr-only" role="status" aria-live="polite">
+                  {copied ? "Email address copied to clipboard" : ""}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="relative z-10 px-4 pt-3 pb-5 text-center">
-          <p className="font-display font-bold uppercase text-black dark:text-white text-base leading-tight">Nauha</p>
-          <p className="text-xs uppercase tracking-wide text-black/60 dark:text-white/60 mt-0.5">Software Engineer</p>
-        </div>
-
-        <div
-          className="absolute inset-0 z-20 pointer-events-none"
-          style={{ background: "linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.18) 45%, transparent 60%)" }}
-        />
+        {/* Explicit, keyboard-reachable flip control - the physics drag is
+            inherently mouse/touch only, so this is the one part of the
+            badge a keyboard or screen-reader user can actually operate. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setFlipped((f) => !f); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          aria-label={flipped ? "Show badge front" : "Flip badge to see contact info"}
+          className="absolute -bottom-2 -right-2 z-40 grid place-items-center w-8 h-8 rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
+          style={{ background: ACCENT, color: "#fff" }}
+        >
+          <RotateCw size={14} strokeWidth={2.2} />
+        </button>
       </div>
     </div>
   );
