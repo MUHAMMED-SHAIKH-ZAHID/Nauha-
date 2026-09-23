@@ -7,50 +7,45 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 // exact native-speaker-verified spellings if you have them; the component
 // itself doesn't care what the strings are, only that each has a `text`,
 // a `lang` tag, and (for RTL scripts) a `dir`.
-//
-// `className` points at a font-family utility per script (font-display,
-// font-arabic, etc.) so each renders in a face suited to that script instead
-// of falling through to one generic font. Only font-display/font-arabic/
-// font-hindi/font-chinese existed before - if font-japanese/font-korean/
-// font-cyrillic/font-hebrew aren't defined in your Tailwind config yet,
-// those four will just fall back to the browser's default font for that
-// script (still fully legible, just not custom-styled) until you add them.
 const variants = [
   { text: "Nauha", lang: "en", className: "font-display" },
   { text: "نوها", lang: "ar", dir: "rtl", className: "font-arabic" },
-  { text: "नौहा", lang: "hi", className: "font-hindi" },
-  { text: "നൗഹ", lang: "ml", className: "font-malayalam" }, // her own mother tongue - Kerala
   { text: "娜哈", lang: "zh", className: "font-chinese" },
-  { text: "Nauha", lang: "fr", className: "font-display italic" },
+  { text: "नौहा", lang: "hi", className: "font-hindi" },
   { text: "ナウハ", lang: "ja", className: "font-japanese" },
-  { text: "나우하", lang: "ko", className: "font-korean" },
-  { text: "Науха", lang: "ru", className: "font-cyrillic" },
-  { text: "נאוהה", lang: "he", dir: "rtl", className: "font-hebrew" },
 ];
 
-// Long enough to actually read a script you don't know, short enough to
-// still feel alive - the previous 900ms was closer to a flicker than a
-// reveal, especially for the denser scripts (Hindi, Arabic).
 const HOLD_MS = 1500;
 
-// One spring, reused for both the text crossfade and the container's width
-// morph, so the two never feel like they're animating on separate clocks.
-const SPRING = { type: "spring", stiffness: 260, damping: 26, mass: 0.9 };
+// Apple Design §4: this is a passive, un-touched text swap, not a gesture the
+// user carried momentum into - so it gets NO bounce. `bounce: 0` is
+// critically damped (settles cleanly, no overshoot), and `duration: 0.4`
+// matches Apple's own shipped value for a plain reposition/content change.
+// The previous stiffness/damping/mass trio (260/26/0.9) was accidentally
+// *under*-damped - real critical damping at that stiffness/mass would need
+// damping ≈30.6, not 26 - so it was overshooting slightly on every single
+// cycle without anyone asking it to.
+const SPRING = { type: "spring", bounce: 0, duration: 0.4 };
 
 export default function NameCycle() {
   const [index, setIndex] = useState(0);
   const reduceMotion = useReducedMotion();
   const hiddenRef = useRef(false);
+  // Apple Design §16 (Agency): keep people in control of ongoing motion.
+  // Hovering or focusing the name pauses the cycle so someone who wants to
+  // actually read a script they don't recognize can - it resumes the
+  // instant they move away, no separate control needed.
+  const pausedRef = useRef(false);
 
   useEffect(() => {
-    if (reduceMotion) return; // static name only - see render below
+    if (reduceMotion) return;
     function tick() {
-      if (!hiddenRef.current) setIndex((i) => (i + 1) % variants.length);
+      if (!hiddenRef.current && !pausedRef.current) {
+        setIndex((i) => (i + 1) % variants.length);
+      }
     }
     const timer = setInterval(tick, HOLD_MS);
 
-    // Don't spend cycles (or announce language changes) on a tab nobody's
-    // looking at - pause while it's hidden, pick back up when it returns.
     function onVisibility() {
       hiddenRef.current = document.hidden;
     }
@@ -61,12 +56,12 @@ export default function NameCycle() {
     };
   }, [reduceMotion]);
 
-  // Reduced motion: skip the cycling entirely rather than just slowing it
-  // down - a moving multilingual marquee is exactly the kind of motion that
-  // preference exists to opt out of. One name, held still.
+  // Reduced motion: one name, held still - a moving multilingual marquee is
+  // exactly the kind of motion that preference exists to opt out of
+  // (Apple Design §14).
   if (reduceMotion) {
     return (
-      <span className="inline-block font-light uppercase font-display" lang="en">
+      <span className="inline-block font-light uppercase font-display tracking-tight" lang="en">
         Nauha
       </span>
     );
@@ -75,20 +70,17 @@ export default function NameCycle() {
   const current = variants[index];
 
   return (
-    // `layout` on the wrapper is what makes the container's width morph
-    // smoothly as shorter/longer scripts swap in, instead of snapping - the
-    // AnimatePresence child below can't do this itself since each cycle is a
-    // brand-new element (different `key`), not the same one resizing.
     <motion.span
       layout
       transition={SPRING}
-      className="inline-block relative align-baseline"
+      className="inline-block relative align-baseline cursor-default"
       aria-label="Nauha"
+      onMouseEnter={() => { pausedRef.current = true; }}
+      onMouseLeave={() => { pausedRef.current = false; }}
+      onFocus={() => { pausedRef.current = true; }}
+      onBlur={() => { pausedRef.current = false; }}
+      tabIndex={0}
     >
-      {/* `popLayout` lets the incoming script start animating in immediately
-          while the outgoing one finishes fading out on top of it, instead of
-          the old `mode="wait"`, which fully removes one before starting the
-          next and reads as a small blank flicker every cycle. */}
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
           key={index}
@@ -99,7 +91,13 @@ export default function NameCycle() {
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           exit={{ opacity: 0, y: -14, filter: "blur(6px)" }}
           transition={SPRING}
-          className={`inline-block font-light uppercase ${current.className}`}
+          // Apple Design §15: negative tracking on large display type - the
+          // name renders at display sizes (clamp up to 5rem in Hero), and
+          // letters read too far apart at that size without it. `will-change`
+          // hints the compositor ahead of the blur+transform animation
+          // (§1: kill every avoidable frame of latency).
+          className={`inline-block font-light uppercase tracking-tight ${current.className}`}
+          style={{ willChange: "transform, opacity, filter" }}
         >
           {current.text}
         </motion.span>

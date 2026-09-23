@@ -9,31 +9,6 @@ import frootreeVideo from "../assets/videos/frootree-demo.mp4";
 import fanzaLongImg from "../assets/Images/fanza_long.jpg";
 import atyabImg from "../assets/Images/atyab.jpg";
 
-// Selected Work v3 - real photorealistic device mockups (your own PNGs,
-// not CSS-drawn frames), real content composited into each screen cutout,
-// and ONE scroll mechanism shared by desktop and mobile.
-//
-// How the pin works: the outer wrapper is 3x the viewport height
-// (`PROJECTS.length * 100vh`). Its inner stage is `position: sticky; top:
-// 0; height: 100vh`, so as the page scrolls through that tall wrapper the
-// stage stays pinned on screen. A framer-motion `useScroll` tracks that
-// same scroll progress (0 -> 1 across the wrapper) and drives the inner
-// track's `x` transform from 0 to -200vw, sliding the three full-viewport
-// panels left underneath the pinned stage. This is native-scroll-driven -
-// wheel, trackpad, touch and keyboard scrolling all just work identically
-// on every device - and the moment the wrapper's bottom edge reaches the
-// top of the viewport, the sticky stage un-pins on its own and normal
-// vertical scrolling continues. That's the "smooth transition back to
-// bottom scroll" for free, no extra code, and it's why mobile does NOT
-// get a separate swipe carousel: it's the same component, same gesture,
-// just laid out narrower.
-//
-// How the compositing works: each mockup PNG (macbook.png / ipad.png /
-// iphone.png) has a transparent screen cutout. The real content (video or
-// image) sits in an absolutely-positioned layer sized to that cutout's
-// measured percentage bounds, BEHIND the mockup image in z-order. The
-// mockup's opaque bezel then reads as a real frame around real content,
-// with no perspective warping needed since these are front-facing shots.
 const PROJECTS = [
   {
     device: "mac",
@@ -41,7 +16,7 @@ const PROJECTS = [
     href: "https://frootree.com",
     domain: "frootree.com",
     tags: "Shopify · E-commerce · UI/UX",
-    description: "Fresh fruit & dry-fruit delivery storefront out of Kozhikode.",
+    description: "A full Shopify storefront for a Calicut fruit & dry-fruit delivery business — quick-add cart, curated collections, and same-day delivery, trusted by 10,000+ local customers.",
     color: "#2f7d4f",
     video: frootreeVideo,
   },
@@ -51,7 +26,7 @@ const PROJECTS = [
     href: "https://fanzafashion.com",
     domain: "fanzafashion.com",
     tags: "Shopify · E-commerce · UI/UX",
-    description: "Gold-plated & artificial fashion jewellery storefront.",
+    description: "A gold-plated & artificial jewellery storefront organized by category — rings, necklaces, earrings — with wedding, daily-wear, and office collections, plus a built-in referral program.",
     color: "#a9812f",
     longImage: fanzaLongImg,
   },
@@ -61,19 +36,12 @@ const PROJECTS = [
     href: "https://atyabalanbar.com",
     domain: "atyabalanbar.com",
     tags: "Shopify · E-commerce · UI/UX",
-    description: "Arabic oud perfumes & luxury fragrance storefront.",
+    description: "A luxury Arabic oud & fragrance storefront with GCC-wide delivery across the UAE, Saudi Arabia, Qatar, Oman, Kuwait & Bahrain, plus real customer reviews sourced from every one of those markets.",
     color: "#8a6a3a",
     image: atyabImg,
   },
 ];
 
-// Measured once from each real mockup PNG: its own pixel aspect ratio
-// (so the wrapper box never stretches the frame) and the screen cutout's
-// bounds as percentages of that box, so the content layer lines up with
-// the bezel regardless of how large the mockup is rendered. `maxWidth` is
-// a generous px ceiling for big screens; the actual rendered size is
-// worked out live in `deviceBoxStyle` below so it also never runs taller
-// than the viewport allows, on any device.
 const DEVICE_SPECS = {
   mac: {
     img: macbookMockup,
@@ -98,13 +66,6 @@ const DEVICE_SPECS = {
   },
 };
 
-// How tall, as a share of the viewport, a device box is allowed to be.
-// Expressing the width cap in vh units (not px/vw) is what makes this
-// work as a *height* budget without any JS measuring: "Nvh" is always N%
-// of the viewport's height in pixels, so `maxWidth * ratio` in vh units
-// caps the box's rendered HEIGHT at `maxWidth` vh, whatever the screen
-// size or orientation - it can never blow past a short laptop window or
-// a landscape phone.
 const HEIGHT_BUDGET_VH = 62;
 
 function deviceBoxStyle(spec) {
@@ -114,6 +75,15 @@ function deviceBoxStyle(spec) {
     aspectRatio: spec.ratio,
   };
 }
+
+// Reused from About.jsx's exact heading pattern - same one-shot spring
+// fade, same class treatment, so this section introduces itself with the
+// identical visual weight instead of the previous small in-stage label
+// standing in as the "title".
+const headingFade = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 170, damping: 22, mass: 0.9 } },
+};
 
 function ScreenChrome({ domain }) {
   return (
@@ -130,10 +100,28 @@ function ScreenChrome({ domain }) {
     </div>
   );
 }
+function SlideInHeading() {
+  const ref = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start 0.98", "start 0.55"],
+  });
+  const x = useTransform(scrollYProgress, [0, 1], ["-18vw", "4vw"]);
+  const opacity = useTransform(scrollYProgress, [0, 0.6], [0, 1]);
 
-// Autoplaying loop video, paused whenever its panel isn't the one in (or
-// near) view - three panels' worth of video decoding at once is wasted
-// battery/CPU for two panels the visitor isn't looking at.
+  return (
+    <div ref={ref} className="overflow-hidden w-full">
+      <motion.p
+        style={{ x, opacity }}
+        className="font-display md:pt-16 font-medium uppercase tracking-tight py-4 text-black dark:text-white
+                   text-[clamp(2.25rem,7vw,5.5rem)] leading-[0.9] whitespace-nowrap"
+      >
+        Things I've built.
+      </motion.p>
+    </div>
+  );
+}
+
 function LoopVideo({ src, active }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -158,9 +146,6 @@ function LoopVideo({ src, active }) {
   );
 }
 
-// The one real (non-decorative) interaction in the section: a genuinely
-// long screenshot you drag up/down inside the phone's screen, clamped so
-// it can't be dragged past either end. Works identically with touch.
 function DraggableLongScreenshot({ src, alt, frameRef }) {
   const imgRef = useRef(null);
   const [maxDrag, setMaxDrag] = useState(0);
@@ -220,10 +205,6 @@ function Shadow() {
   );
 }
 
-// One component drives all three device types: it lays out a box at the
-// mockup's own aspect ratio, drops the real content into the measured
-// screen-cutout bounds, then stacks the mockup PNG on top (pointer-events
-// disabled so drags on the phone content pass straight through the bezel).
 function DeviceMockup({ project, active }) {
   const spec = DEVICE_SPECS[project.device];
   const screenRef = useRef(null);
@@ -263,63 +244,95 @@ function DeviceMockup({ project, active }) {
   );
 }
 
-function ProjectDetails({ project }) {
+function ProjectDetails({ project, active }) {
+  const container = {
+    hidden: {},
+    visible: { transition: { staggerChildren: 0.08 } },
+  };
+  const item = {
+    hidden: { opacity: 0.4, y: 6 },
+    visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 24, mass: 0.7 } },
+  };
+
   return (
-    <div className="text-center md:text-left shrink-0">
-      <p className="text-[10px] sm:text-[11px] font-semibold tracking-wide uppercase mb-1.5 sm:mb-2" style={{ color: project.color }}>
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate={active ? "visible" : "hidden"}
+      className="text-center md:text-left shrink-0"
+    >
+      <motion.p
+        variants={item}
+        className="text-[10px] sm:text-[11px] font-semibold tracking-wide uppercase mb-1.5 sm:mb-2"
+        style={{ color: project.color }}
+      >
         {project.tags}
-      </p>
-      <h3 className="font-display font-black uppercase tracking-tight text-black dark:text-white text-[clamp(1.3rem,4vw,2.6rem)] leading-[0.95]">
+      </motion.p>
+
+      <motion.h3
+        variants={item}
+        className="font-display  uppercase tracking-tight text-black dark:text-white text-[clamp(1.3rem,4vw,2.6rem)] leading-[0.95]"
+      >
         {project.name}
-      </h3>
-      <p className="hidden sm:block text-sm sm:text-[15px] text-black/60 dark:text-white/60 mt-2 sm:mt-3 max-w-sm mx-auto md:mx-0">
+      </motion.h3>
+
+      {/* Was hidden entirely below sm: - now always visible, clamped to 2
+          lines on small screens so real content shows everywhere instead
+          of being deleted for mobile visitors. */}
+      <motion.p
+        variants={item}
+        className="text-xs sm:text-sm sm:text-[15px] text-black/60 dark:text-white/60 mt-2 sm:mt-3 max-w-sm mx-auto md:mx-0
+                   line-clamp-2 sm:line-clamp-none"
+      >
         {project.description}
-      </p>
-      <a
+      </motion.p>
+
+      <motion.a
+        variants={item}
         href={project.href}
         target="_blank"
         rel="noopener noreferrer"
-        className="group inline-flex items-center gap-1.5 mt-3 sm:mt-5 text-xs sm:text-sm font-semibold justify-center md:justify-start"
+        className="group inline-flex items-center gap-1.5 mt-3 sm:mt-5 text-xs sm:text-sm font-semibold justify-center md:justify-start
+                   transition-transform duration-150 active:scale-[0.97]"
         style={{ color: project.color }}
       >
         {project.domain}
         <ArrowUpRight size={15} strokeWidth={2.2} className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </a>
-    </div>
+      </motion.a>
+    </motion.div>
   );
 }
 
-// Its own component (not a useTransform call inside a .map loop in the
-// parent) so each dot's hook call is a normal, unconditional top-level
-// call within its own component instance - satisfies the rules of hooks
-// properly instead of just happening to work because PROJECTS.length
-// never changes.
 function ProgressDot({ index, total, scrollYProgress }) {
-  // A panel is fully centered in the pinned stage at progress =
-  // index / (total - 1) - that's where the track's x transform puts it
-  // exactly in view (see ScrollTrack) - so the dot should peak there too,
-  // not at a naive index/total split.
   const center = index / Math.max(1, total - 1);
   const gap = 0.5 / Math.max(1, total - 1);
-  const opacity = useTransform(scrollYProgress, [Math.max(0, center - gap), center, Math.min(1, center + gap)], [0.3, 1, 0.3]);
-  return <motion.span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white" style={{ opacity }} />;
+  // Was opacity [0.3, 1, 0.3] and a fixed small size - now the active dot
+  // also grows slightly, giving a clearer "you are here" signal than
+  // opacity contrast alone provides.
+  const opacity = useTransform(scrollYProgress, [Math.max(0, center - gap), center, Math.min(1, center + gap)], [0.25, 1, 0.25]);
+  const scale = useTransform(scrollYProgress, [Math.max(0, center - gap), center, Math.min(1, center + gap)], [1, 1.6, 1]);
+  return <motion.span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white" style={{ opacity, scale }} />;
 }
 
-// One panel of the track: device + details, laid out side by side on
-// wider screens and stacked (with everything sized in vh/vw so it can
-// never overflow a short mobile 100vh viewport) on narrow ones.
-//
-// Note there is deliberately NO scroll-driven opacity/fade on the panel
-// itself. The horizontal slide (the track's `x` transform) is already
-// the transition - a panel is fully visible exactly while it's
-// geometrically on screen. Layering a second, independently-timed fade
-// on top of that made panels visually vanish while they were still
-// partway across the viewport, which read as a flicker/pop-out bug
-// rather than a transition. The slide alone is the smoother result.
-//
-// It still tracks its own "am I the panel currently centered in the
-// pinned stage" state, so the mac panel's video only plays while it's
-// actually the one in view (the other two stay paused).
+// New: explicit "2 / 3" style counter, updating live off the same
+// scrollYProgress everything else already tracks - a direct, unambiguous
+// answer to "where am I" instead of relying on dot-squinting alone.
+function PanelCounter({ total, scrollYProgress }) {
+  const [current, setCurrent] = useState(1);
+  useEffect(
+    () =>
+      scrollYProgress.on("change", (v) => {
+        const idx = Math.round(v * (total - 1)) + 1;
+        setCurrent(Math.min(total, Math.max(1, idx)));
+      }),
+    [scrollYProgress, total]
+  );
+  return (
+    <span className="text-[11px] sm:text-xs font-semibold tabular-nums text-black/40 dark:text-white/40">
+      {String(current).padStart(2, "0")} / {String(total).padStart(2, "0")}
+    </span>
+  );
+}
 function ProjectPanel({ project, scrollYProgress, index, total }) {
   const center = index / Math.max(1, total - 1);
   const halfGap = 0.5 / Math.max(1, total - 1);
@@ -339,40 +352,44 @@ function ProjectPanel({ project, scrollYProgress, index, total }) {
         <div className="flex items-center justify-center">
           <DeviceMockup project={project} active={active} />
         </div>
-        <ProjectDetails project={project} />
+        {/* Was: <ProjectDetails project={project} /> - now shares the SAME
+            active flag the device already tracks, instead of two
+            components that never talk to each other. */}
+        <ProjectDetails project={project} active={active} />
       </div>
     </div>
   );
 }
 
-// The single scroll-pin track shared by every breakpoint. Desktop and
-// mobile differ only in spacing/typography (handled inside ProjectPanel /
-// ProjectDetails via responsive classes) - the mechanism itself, the
-// sticky stage and the scroll-driven horizontal track, is identical.
 function ScrollTrack() {
   const trackRef = useRef(null);
   const reduceMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: trackRef, offset: ["start start", "end end"] });
   const rawX = useTransform(scrollYProgress, [0, 1], ["0vw", `-${(PROJECTS.length - 1) * 100}vw`]);
-  // A light spring smooths out the last bit of jitter from fast/notchy
-  // trackpad and mouse-wheel input so the slide feels closer to the
-  // native momentum scrolling every device already does vertically.
-  // Reduced-motion visitors get the raw, immediate value instead.
-  const springX = useSpring(rawX, { stiffness: 220, damping: 32, mass: 0.6 });
+  // Apple Design §4: was stiffness 220 / damping 32 / mass 0.6 - critical
+  // damping at that stiffness+mass is ~23, so damping 32 was meaningfully
+  // OVER-damped. For a spring continuously chasing a live, ever-changing
+  // scroll position (not settling to one fixed target), over-damping shows
+  // up as visible lag between your actual scroll and what's on screen -
+  // the "not smooth" feeling. `bounce: 0` keeps it critically damped (no
+  // overshoot - still correct, since a scroll-follower shouldn't bounce),
+  // and a short `duration` keeps it tight enough to track scroll closely
+  // while still smoothing out trackpad/wheel jitter.
+  const springX = useSpring(rawX, { type: "spring", bounce: 0, duration: 0.28 });
   const x = reduceMotion ? rawX : springX;
 
   return (
     <div ref={trackRef} className="relative" style={{ height: `${PROJECTS.length * 100}vh` }}>
       <div className="sticky top-0 h-screen overflow-hidden">
-        {/* persistent label + progress dots, stays fixed while panels slide underneath */}
         <div className="absolute top-5 sm:top-8 left-5 sm:left-8 md:left-16 z-30 flex items-center gap-3 sm:gap-4">
-          <p className="text-[11px] sm:text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Selected Work</p>
-          <div className="flex items-center gap-1.5">
-            {PROJECTS.map((p, i) => (
-              <ProgressDot key={p.name} index={i} total={PROJECTS.length} scrollYProgress={scrollYProgress} />
-            ))}
-          </div>
-        </div>
+  <p className="text-[11px] sm:text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Selected Work</p>
+  <div className="flex items-center gap-1.5">
+    {PROJECTS.map((p, i) => (
+      <ProgressDot key={p.name} index={i} total={PROJECTS.length} scrollYProgress={scrollYProgress} />
+    ))}
+  </div>
+  <PanelCounter total={PROJECTS.length} scrollYProgress={scrollYProgress} />
+</div>
 
         <motion.div className="flex h-full" style={{ width: `${PROJECTS.length * 100}vw`, x, willChange: "transform" }}>
           {PROJECTS.map((project, i) => (
@@ -387,6 +404,7 @@ function ScrollTrack() {
 export default function SelectedWork() {
   return (
     <section id="work" className="relative w-full bg-[#fffdf9] dark:bg-black transition-colors duration-500">
+      <SlideInHeading />
       <ScrollTrack />
     </section>
   );

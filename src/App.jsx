@@ -8,18 +8,16 @@ import SelectedWork from "./components/SelectedWork";
 
 export default function App() {
   return (
-    <> 
+    <>
       <Navbar />
       <Hero />
       <About />
       <SelectedWork />
       <TextMarqueeSection />
-      <ContactIconsPhysics /> 
+      <ContactIconsPhysics />
       <div className="bg-white dark:bg-black">
-
-      <FooterGarden />
+        <FooterGarden />
       </div>
-  
     </>
   );
 }

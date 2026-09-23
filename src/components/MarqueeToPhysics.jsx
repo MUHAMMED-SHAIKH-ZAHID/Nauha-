@@ -25,14 +25,14 @@ import {
 // ---------------------------------------------------------------------------
 const PILLS = [
   { label: "Frontend Developer", color: "163, 217, 255", icon: Code2 },
+  { label: "Shopify Expert", color: "255, 137, 74", icon: ShoppingBag },
+  { label: "WordPress", color: "90, 219, 165", icon: Globe },
   { label: "Full-Stack Developer", color: "255, 137, 74", icon: Layers },
-  { label: "React", color: "217, 201, 255", icon: Atom },
   { label: "JavaScript", color: "253, 207, 0", icon: Braces },
   { label: "UI / UX Design", color: "251, 207, 232", icon: PenTool },
-  { label: "WordPress", color: "90, 219, 165", icon: Globe },
   { label: "Python", color: "217, 249, 157", icon: Terminal },
   { label: "Git", color: "163, 217, 255", icon: GitBranch },
-  { label: "Shopify Expert", color: "255, 137, 74", icon: ShoppingBag },
+  { label: "React", color: "217, 201, 255", icon: Atom },
 ];
 
 // Icon-only accent circles - now part of the marquee itself (not physics-only)
@@ -53,7 +53,7 @@ function buildTrack() {
   let bi = 0;
   PILLS.forEach((p, i) => {
     track.push({ ...p, kind: "pill", key: `pill-${p.label}` });
-    if ((i + 1) % 3 === 0 && bi < BADGES.length) {
+    if ((i + 1) % 1 === 0 && bi < BADGES.length) {
       track.push({ ...BADGES[bi], kind: "badge", key: `badge-${bi}` });
       bi += 1;
     }
@@ -72,13 +72,6 @@ export default function MarqueeToPhysics() {
   const isDark = theme === "dark";
   const [mode, setMode] = useState("marquee");
   const [reducedMotion, setReducedMotion] = useState(false);
-  // Tracked once, in render, and reused for marquee, physics-init AND the
-  // physics render - previously the "shrink on small screens" factor only
-  // existed inside tryInit()'s math (used for collision sizing) while the
-  // badge's actual on-screen style always used the full `p.size`, and pills
-  // had no small-screen shrink at all. That's why the marquee looked bigger
-  // than what dropped: the two modes were reading from different sources of
-  // truth. Now there's exactly one.
   const [smallScreen, setSmallScreen] = useState(
     typeof window !== "undefined" ? window.innerWidth < 480 : false
   );
@@ -89,15 +82,21 @@ export default function MarqueeToPhysics() {
   const elsRef = useRef([]);
   const pillRefs = useRef([]);
   const capturedRef = useRef({});
-  // Apple's "velocity handoff": a gesture (or here, an ambient motion) that
-  // gets interrupted should hand its momentum to whatever takes over, not
-  // reset to a standstill. Right before freezing the marquee we measure how
-  // fast it was actually moving and carry that speed into each chip's
-  // initial fall velocity, so the strip visibly keeps drifting left as it
-  // drops instead of just stopping dead and dropping straight down.
   const marqueeVxRef = useRef(0);
   const zCounterRef = useRef(1);
-  const dragRef = useRef({ active: null, lastPos: null, lastTime: 0, vx: 0, vy: 0 });
+  // Apple Design §2 Direct Manipulation: `grabOffsetX/Y` is the whole fix -
+  // it remembers WHERE on the pill you actually grabbed, so the pill tracks
+  // your finger/cursor from that exact point instead of re-centering itself
+  // under it (which was causing a visible pop the instant a drag started).
+  const dragRef = useRef({
+    active: null,
+    lastPos: null,
+    lastTime: 0,
+    vx: 0,
+    vy: 0,
+    grabOffsetX: 0,
+    grabOffsetY: 0,
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -107,9 +106,6 @@ export default function MarqueeToPhysics() {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
-  // Same breakpoint used everywhere sizing is decided (marquee, physics
-  // init, physics render), so rotating a phone or resizing never leaves one
-  // mode reading a stale size.
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
     setSmallScreen(mq.matches);
@@ -118,14 +114,11 @@ export default function MarqueeToPhysics() {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
-  // The one place badge diameter is computed - marquee, physics init and
-  // physics render all call this instead of each doing their own math.
   const badgeSize = useCallback(
     (p) => (smallScreen ? Math.round(p.size * 0.72) : p.size),
     [smallScreen]
   );
 
-  // Trigger: capture each pill's REAL current position before switching modes
   useEffect(() => {
     function onScroll() {
       if (mode !== "marquee" || !rootRef.current) return;
@@ -149,14 +142,10 @@ export default function MarqueeToPhysics() {
         });
         capturedRef.current = positions;
 
-        // Measure the strip's actual speed right before freezing it: the
-        // track is rendered twice back-to-back and the keyframe scrolls
-        // exactly one copy's width over MARQUEE_DURATION_S, so
-        // (rendered width / 2) / duration is its true px/s.
         if (rowRef.current) {
           const trackWidthPx = rowRef.current.scrollWidth / 2;
           const speedPxPerSec = trackWidthPx / MARQUEE_DURATION_S;
-          marqueeVxRef.current = -(speedPxPerSec / 60); // px per dt-unit (dt=1 @ 60fps), moving left
+          marqueeVxRef.current = -(speedPxPerSec / 60);
         }
 
         setMode("physics");
@@ -168,9 +157,6 @@ export default function MarqueeToPhysics() {
   }, [mode]);
 
   // Physics init - retries until the stage actually has real dimensions.
-  // No rotation, no rigid-body tumbling - just a clean, predictable fall
-  // with gentle non-overlapping separation, matched to real elapsed time
-  // so the speed is identical on a 60Hz laptop and a 120Hz phone.
   useEffect(() => {
     if (mode !== "physics") return;
     let cancelled = false;
@@ -195,10 +181,7 @@ export default function MarqueeToPhysics() {
           ...p,
           x: captured ? captured.x : 40 + Math.random() * Math.max(1, W - (w + 40)),
           y: captured ? captured.y : -80 - Math.random() * 500,
-          // Carry over the marquee's real scroll speed (with a touch of per-
-          // chip variance) instead of resetting to near-zero, so the strip
-          // reads as one continuous motion rather than a hard stop-then-drop.
-          vx: marqueeVxRef.current + (Math.random() - 0.5) * 0.5,
+          vx: reducedMotion ? 0 : marqueeVxRef.current + (Math.random() - 0.5) * 0.5,
           vy: 0,
           w,
           h,
@@ -208,14 +191,19 @@ export default function MarqueeToPhysics() {
       });
       zCounterRef.current = bodiesRef.current.length + 1;
 
-      const GRAVITY = 0.22; // px per ms^2-ish, scaled by dt below - tuned for a brisk, satisfying fall
-      const MAX_FALL_SPEED = 13;
+      // Apple Design §14 Reduced Motion: the marquee's own CSS animation was
+      // already correctly muted, but the physics drop/bounce that follows it
+      // was NOT - it ran the full gravity simulation regardless of the
+      // setting. Zeroing gravity/fall-speed/restitution here means items
+      // that already have a captured position simply hold still instead of
+      // dropping and bouncing; dragging still works exactly the same either way.
+      const GRAVITY = reducedMotion ? 0 : 0.22;
+      const MAX_FALL_SPEED = reducedMotion ? 0 : 13;
       const FRICTION = 0.985;
-      const REST = 0.24;
+      const REST = reducedMotion ? 0 : 0.24;
 
       function step(ts) {
         if (lastTs == null) lastTs = ts;
-        // dt = 1 at a perfect 60fps frame; keeps speed identical across refresh rates
         const dt = Math.min((ts - lastTs) / (1000 / 60), 3);
         lastTs = ts;
 
@@ -239,8 +227,6 @@ export default function MarqueeToPhysics() {
           if (b.x + b.w > w) { b.x = w - b.w; b.vx = -Math.abs(b.vx) * REST; }
         });
 
-        // Gentle, capped separation - keeps pills readable and non-overlapping,
-        // no single-frame jumps even when densely packed.
         for (let i = 0; i < list.length; i++) {
           for (let j = i + 1; j < list.length; j++) {
             const a = list[i], b2 = list[j];
@@ -269,7 +255,7 @@ export default function MarqueeToPhysics() {
 
     tryInit();
     return () => { cancelled = true; cancelAnimationFrame(rafId); };
-  }, [mode, badgeSize]);
+  }, [mode, badgeSize, reducedMotion]);
 
   const getPoint = useCallback((e) => {
     const rect = stageRef.current.getBoundingClientRect();
@@ -288,6 +274,10 @@ export default function MarqueeToPhysics() {
     if (el) el.style.zIndex = body.z;
     dragRef.current.active = body;
     const p = getPoint(e);
+    // Apple Design §2: record the offset from the grab point to the body's
+    // own top-left, so the drag preserves it instead of re-centering.
+    dragRef.current.grabOffsetX = p.x - body.x;
+    dragRef.current.grabOffsetY = p.y - body.y;
     dragRef.current.lastPos = p;
     dragRef.current.lastTime = performance.now();
   }, [getPoint]);
@@ -301,8 +291,10 @@ export default function MarqueeToPhysics() {
     const dt = Math.max(now - dragRef.current.lastTime, 1);
     dragRef.current.vx = dragRef.current.vx * 0.5 + ((p.x - dragRef.current.lastPos.x) / dt * 16) * 0.5;
     dragRef.current.vy = dragRef.current.vy * 0.5 + ((p.y - dragRef.current.lastPos.y) / dt * 16) * 0.5;
-    body.x = p.x - body.w / 2;
-    body.y = p.y - body.h / 2;
+    // 1:1 tracking from the actual grab point (was: always re-centering on
+    // the cursor, which caused a visible snap the instant you grabbed off-center).
+    body.x = p.x - dragRef.current.grabOffsetX;
+    body.y = p.y - dragRef.current.grabOffsetY;
     dragRef.current.lastPos = p;
     dragRef.current.lastTime = now;
   }, [getPoint]);
@@ -329,9 +321,6 @@ export default function MarqueeToPhysics() {
     };
   }, [onPointerMove]);
 
-  // Attach touchstart NATIVELY (bypassing React's passive synthetic event)
-  // so preventDefault() actually works and the browser doesn't hijack the
-  // gesture as a page scroll before the drag can start.
   useEffect(() => {
     if (mode !== "physics") return;
     const handlers = [];
@@ -347,10 +336,6 @@ export default function MarqueeToPhysics() {
     };
   }, [mode, onPointerDown]);
 
-  // Solid-fill surface, matched to the reference: same vivid background in
-  // both themes. Only the text/icon color adapts - near-black in light mode,
-  // a soft zinc gradient in dark mode so it stays legible without turning
-  // the chip into a glow.
   const surface = useCallback((rgb, opts = {}) => {
     if (opts.invert) {
       return {
@@ -366,8 +351,6 @@ export default function MarqueeToPhysics() {
     };
   }, [isDark]);
 
-  // Dark-mode label text gets a subtle zinc gradient instead of flat color;
-  // the icon (sibling element) keeps the solid `surface().color` above.
   const labelStyle = isDark
     ? {
         backgroundImage: "linear-gradient(135deg, #52525b, #18181b)",
@@ -389,11 +372,6 @@ export default function MarqueeToPhysics() {
     </span>
   );
 
-  // Single source of truth for how a pill/badge looks, used by BOTH the
-  // marquee and the physics render below. Previously each mode kept its own
-  // copy of these class strings; editing one and not the other is exactly
-  // how they drifted out of sync and ended up different sizes. Now there is
-  // only one place to change.
   const PILL_BASE_CLASS = "px-2.5 py-1 sm:px-5 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-medium shrink-0 transition-colors duration-500";
   const BADGE_BASE_CLASS = "rounded-full flex items-center justify-center shrink-0 transition-colors duration-500";
 

@@ -124,16 +124,16 @@ export default function About() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 lg:gap-16">
           {/* Left column: bio + services + lists */}
           <div>
-            <motion.h2
-              custom={0}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              variants={fadeUp}
-              className="font-display pt-18 lg:pt-20 font-black uppercase leading-[0.85] text-black dark:text-white text-[clamp(3rem,10vw,7rem)] mb-6"
-            >
-              About
-            </motion.h2>
+           <motion.h2
+  custom={0}
+  initial="hidden"
+  whileInView="visible"
+  viewport={{ once: true }}
+  variants={fadeUp}
+  className="font-display pt-16 lg:pt-20 font-medium uppercase tracking-tight leading-[0.9] text-black dark:text-white text-[clamp(3rem,10vw,7rem)] mb-6"
+>
+  About
+</motion.h2>
 
             <ScrollRevealText
               text={bio}

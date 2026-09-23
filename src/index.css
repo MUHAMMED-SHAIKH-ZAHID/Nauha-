@@ -4,20 +4,28 @@
 @theme {
   --font-serif: "Playfair Display", serif;
   --font-display: "Archivo", sans-serif;
-  --font-arabic: "Amiri", serif;
-  --font-hindi: "Noto Serif Devanagari", serif;
-  --font-chinese: "Noto Serif SC", serif;
   --font-thin-serif: "Cormorant Garamond", serif;
-      --font-arabic: "Cairo", sans-serif;
-      --font-hindi: "Hind", sans-serif;
-      --font-chinese: "Noto Sans SC", sans-serif;
+  --font-arabic: "Cairo", sans-serif;
+  --font-hindi: "Hind", sans-serif;
+  --font-chinese: "Noto Sans SC", sans-serif;
 }
 
 @keyframes marquee-left {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
 }
+
 @keyframes marquee-right {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(-50%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
 }

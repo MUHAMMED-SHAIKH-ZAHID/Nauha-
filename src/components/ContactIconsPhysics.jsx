@@ -2,11 +2,6 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MessageCircle, FileText, Copy, Check, Link2, X } from "lucide-react";
 
-// Bug fix (kept from the previous pass): these three custom SVGs spread
-// `{...props}` straight onto <svg>, but `size={20}` isn't a real SVG
-// attribute - only `width`/`height` are. Destructuring `size` and mapping it
-// to width/height (the way lucide-react's own icons do internally) is what
-// actually fixed the "icons not loading" symptom.
 function LinkedinIcon({ size = 24, ...props }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -18,7 +13,6 @@ function LinkedinIcon({ size = 24, ...props }) {
     </svg>
   );
 }
-
 function InstagramIcon({ size = 24, ...props }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -28,7 +22,6 @@ function InstagramIcon({ size = 24, ...props }) {
     </svg>
   );
 }
-
 function GithubIcon({ size = 24, ...props }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -40,6 +33,7 @@ function GithubIcon({ size = 24, ...props }) {
 const icons = [
   { label: "LinkedIn", href: "https://www.linkedin.com/in/fathima-nauha-p-545a27275/", Icon: LinkedinIcon },
   { label: "Instagram", href: "https://instagram.com/niiluuhh", Icon: InstagramIcon },
+  // TODO: still a placeholder - replace with her real GitHub URL before shipping.
   { label: "GitHub", href: "https://github.com/YOUR-HANDLE", Icon: GithubIcon },
   { label: "WhatsApp", href: "https://wa.me/+917736964015", Icon: MessageCircle },
   { label: "Resume", href: "/Resume_Nauha.pdf", Icon: FileText },
@@ -47,13 +41,9 @@ const icons = [
 
 const CONTACT_EMAIL = "fathimanauhap03@gmail.com";
 const CHIP_SIZE = 60;
-const FLOOR_INSET = 22; // keeps resting icons off the card's rounded bottom edge
-const DRAG_THRESHOLD = 6; // px of movement that separates "a click" from "a drag"
+const FLOOR_INSET = 22;
+const DRAG_THRESHOLD = 6;
 
-// Fixed, theme-independent card palette. Per your last note: the box itself
-// (background, text, chips, button) should look identical in light and dark
-// mode - only the page around it gets darker. So none of these are ternaries
-// anymore; they're just constants.
 const CARD_BG = "#f2f2f0";
 const CARD_BORDER = "1px solid rgba(0,0,0,0.05)";
 const CHIP_BG = "#ffffff";
@@ -67,33 +57,30 @@ export default function ContactSection() {
   const bodiesRef = useRef([]);
   const elsRef = useRef([]);
   const zCounterRef = useRef(1);
-  const dragRef = useRef({ active: null, pointerId: null, lastPos: null, startPos: null, lastTime: 0, vx: 0, vy: 0, movedDist: 0 });
+  const dragRef = useRef({
+    active: null, pointerId: null, lastPos: null, startPos: null, lastTime: 0,
+    vx: 0, vy: 0, movedDist: 0, grabOffsetX: 0, grabOffsetY: 0,
+  });
   const [copied, setCopied] = useState(false);
   const reduceMotion = useReducedMotion();
-  // Chips stay invisible and inert until the card actually scrolls into
-  // view - confirmed against muhid.de directly: its icons sit at opacity:0
-  // on load and only fall in once, the first time the card crosses into the
-  // viewport. It doesn't replay on scrolling away and back, and settled
-  // icons don't respond to scroll position at all (checked that live too).
   const [started, setStarted] = useState(false);
+  const [inView, setInView] = useState(true);
+  const hiddenRef = useRef(typeof document !== "undefined" ? document.hidden : false);
 
-  // A second, always-reliable way to reach every link with one click - not
-  // a replacement for the falling chips, an addition. Good for anyone who
-  // doesn't want to chase/drag a chip, and for keyboard/screen-reader users
-  // who can't meaningfully interact with the physics stage at all.
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const menuBtnRef = useRef(null);
 
   function handleCopyEmail() {
-    navigator.clipboard.writeText(CONTACT_EMAIL);
-    setCopied(true);
-    const t = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(t);
+    navigator.clipboard.writeText(CONTACT_EMAIL).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      },
+      () => {}
+    );
   }
 
-  // One-shot viewport trigger - disconnects itself the first time the card
-  // is meaningfully on screen, so the fall never replays later.
   useEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -118,29 +105,65 @@ export default function ContactSection() {
     return () => observer.disconnect();
   }, [reduceMotion]);
 
-  // dt-based physics ported from the marquee-to-physics component: real
-  // elapsed time per frame instead of a fixed increment, so fall speed and
-  // drag feel are identical on a 60Hz laptop and a 120Hz phone.
+  // Pause the falling-physics loop when the card is far off-screen or the
+  // tab is backgrounded - matches the same fix already applied in
+  // HangingBadge.jsx, previously missing here.
   useEffect(() => {
-    if (!started) return;
-    if (reduceMotion) {
-      // Static, accessible fallback: lay the chips out in a plain row
-      // immediately, no falling motion at all.
-      const stage = stageRef.current;
-      if (stage) {
-        const W = stage.clientWidth || 300;
-        const gap = 14;
-        const totalW = icons.length * CHIP_SIZE + (icons.length - 1) * gap;
-        let x = Math.max(0, (W - totalW) / 2);
-        icons.forEach((_, i) => {
-          const el = elsRef.current[i];
-          if (el) el.style.transform = `translate3d(${x}px, ${stage.clientHeight - CHIP_SIZE - FLOOR_INSET}px, 0)`;
-          x += CHIP_SIZE + gap;
-        });
-      }
-      return;
+    const card = cardRef.current;
+    if (!card || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "200px" }
+    );
+    observer.observe(card);
+    function onVisibility() {
+      hiddenRef.current = document.hidden;
     }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
+  // Static reduced-motion layout - now retries until the stage actually has
+  // real dimensions (was: read once, immediately, with no guard - if the
+  // stage hadn't finished laying out yet, every chip landed at the wrong
+  // spot permanently for reduced-motion users). Also now re-lays-out on
+  // resize, which it never did before.
+  useEffect(() => {
+    if (!started || !reduceMotion) return;
+    let cancelled = false;
+    let rafId;
+
+    function layout() {
+      if (cancelled) return;
+      const stage = stageRef.current;
+      if (!stage || stage.clientWidth === 0 || stage.clientHeight === 0) {
+        rafId = requestAnimationFrame(layout);
+        return;
+      }
+      const W = stage.clientWidth;
+      const gap = 14;
+      const totalW = icons.length * CHIP_SIZE + (icons.length - 1) * gap;
+      let x = Math.max(0, (W - totalW) / 2);
+      icons.forEach((_, i) => {
+        const el = elsRef.current[i];
+        if (el) el.style.transform = `translate3d(${x}px, ${stage.clientHeight - CHIP_SIZE - FLOOR_INSET}px, 0)`;
+        x += CHIP_SIZE + gap;
+      });
+    }
+    layout();
+    window.addEventListener("resize", layout);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", layout);
+    };
+  }, [started, reduceMotion]);
+
+  useEffect(() => {
+    if (!started || reduceMotion) return;
     let cancelled = false;
     let rafId;
     let lastTs = null;
@@ -179,6 +202,13 @@ export default function ContactSection() {
         if (lastTs == null) lastTs = ts;
         const dt = Math.min((ts - lastTs) / (1000 / 60), 3);
         lastTs = ts;
+
+        // Skip simulation work while off-screen/backgrounded, but keep
+        // scheduling frames so it resumes instantly once visible again.
+        if (hiddenRef.current || !inView) {
+          rafId = requestAnimationFrame(step);
+          return;
+        }
 
         const w = stage.clientWidth;
         const h = stage.clientHeight;
@@ -220,16 +250,12 @@ export default function ContactSection() {
           }
         }
 
-        list.forEach((b, i) => {
-          const el = elsRef.current[i];
-          if (!el) return;
-          const active = b.dragging || b.hovering;
-          const scale = active ? 1.18 : 1;
-          el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0) rotate(${b.angle}deg) scale(${scale})`;
-          el.style.zIndex = b.z;
-          el.style.boxShadow = active ? "0 10px 24px rgba(0,0,0,0.22)" : "0 3px 10px rgba(0,0,0,0.08)";
-          el.style.borderColor = active ? CHIP_BORDER_ACTIVE : "rgba(0,0,0,0.08)";
-        });
+     list.forEach((b, i) => {
+  const el = elsRef.current[i];
+  if (!el) return;
+  el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0) rotate(${b.angle}deg)`;
+  el.style.zIndex = b.z;
+});
 
         rafId = requestAnimationFrame(step);
       }
@@ -237,40 +263,16 @@ export default function ContactSection() {
     }
     tryInit();
     return () => { cancelled = true; cancelAnimationFrame(rafId); };
-  }, [started, reduceMotion]);
+  }, [started, reduceMotion, inView]);
 
   const getPoint = useCallback((e) => {
     const rect = stageRef.current.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }, []);
 
-  // --- Drag, rebuilt on native Pointer Events -------------------------------
-  // The "sticks to the cursor, even after release" bug had two real causes:
-  //
-  // 1. `<a href>` elements are natively draggable in every desktop browser -
-  //    without `draggable={false}`, mousedown on a link can kick off the
-  //    browser's own HTML5 drag-and-drop (the translucent "ghost" you can
-  //    drag to a new tab or the bookmarks bar) AT THE SAME TIME as our own
-  //    JS-driven movement. Two drags running on the same element is exactly
-  //    what a "sticky/ghosting" feel looks like, and the native one doesn't
-  //    clean up on the same mouseup our code listens for.
-  // 2. The old code tracked the drag with a plain
-  //    `window.addEventListener("mouseup", ...)`. That only fires if the
-  //    button is released while the pointer is still over the page - if you
-  //    release slightly outside the window, over dev tools, or after the tab
-  //    loses focus, the listener never runs and `dragRef.current.active`
-  //    stays set forever, so the chip keeps following every later
-  //    mousemove. That's "release also sticking."
-  //
-  // Both are fixed here: `draggable={false}` below kills the native drag
-  // entirely, and switching to Pointer Events + `setPointerCapture` makes
-  // the browser guarantee this element keeps receiving pointermove/up/cancel
-  // for that pointer no matter where it travels - release can't be missed.
-  // A `blur`/`visibilitychange` safety net covers the one remaining edge
-  // case (alt-tabbing mid-drag).
   const onPointerDown = useCallback((e, index) => {
     if (!started) return;
-    if (e.button !== undefined && e.button !== 0) return; // primary button/touch only
+    if (e.button !== undefined && e.button !== 0) return;
     const body = bodiesRef.current[index];
     if (!body) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -279,6 +281,11 @@ export default function ContactSection() {
     zCounterRef.current += 1;
     body.z = zCounterRef.current;
     const p = getPoint(e);
+    // Apple Design §2: remember WHERE on the chip you actually grabbed it,
+    // instead of always re-centering the chip on the cursor - the same fix
+    // already applied in MarqueeToPhysics.jsx and HangingBadge.jsx.
+    dragRef.current.grabOffsetX = p.x - body.x;
+    dragRef.current.grabOffsetY = p.y - body.y;
     dragRef.current.active = body;
     dragRef.current.pointerId = e.pointerId;
     dragRef.current.lastPos = p;
@@ -296,8 +303,9 @@ export default function ContactSection() {
     const dt = Math.max(now - dragRef.current.lastTime, 1);
     dragRef.current.vx = dragRef.current.vx * 0.5 + ((p.x - dragRef.current.lastPos.x) / dt * 18) * 0.5;
     dragRef.current.vy = dragRef.current.vy * 0.5 + ((p.y - dragRef.current.lastPos.y) / dt * 18) * 0.5;
-    body.x = p.x - body.size / 2;
-    body.y = p.y - body.size / 2;
+    // 1:1 tracking from the actual grab point (was: always re-centered on the cursor).
+    body.x = p.x - dragRef.current.grabOffsetX;
+    body.y = p.y - dragRef.current.grabOffsetY;
     dragRef.current.movedDist = Math.hypot(p.x - dragRef.current.startPos.x, p.y - dragRef.current.startPos.y);
     dragRef.current.lastPos = p;
     dragRef.current.lastTime = now;
@@ -333,17 +341,10 @@ export default function ContactSection() {
     };
   }, [onPointerMove, releaseActiveBody]);
 
-  // Movement-distance decides click vs. drag (matches muhid.de exactly,
-  // confirmed live): under the threshold, the native anchor click is left
-  // alone and navigates; at or above it, the click is suppressed because the
-  // gesture was clearly a drag-and-release.
   const onChipClick = useCallback((e) => {
     if (dragRef.current.movedDist > DRAG_THRESHOLD) e.preventDefault();
   }, []);
 
-  // Quick-links menu: closes on outside click or Escape. A control that
-  // traps you open is the opposite of what Apple's design guidance calls
-  // "interruptibility" - every interaction needs an easy, obvious way out.
   useEffect(() => {
     if (!menuOpen) return;
     function onDocPointerDown(e) {
@@ -368,10 +369,6 @@ export default function ContactSection() {
         className="relative rounded-3xl px-6 py-10 sm:py-14 text-center max-w-3xl mx-auto"
         style={{ background: CARD_BG, border: CARD_BORDER }}
       >
-        {/* Quick-links toggle: a guaranteed one-click path to every link,
-            alongside the falling chips rather than instead of them. Its own
-            colors DO follow the site theme (dark:), since it's a floating
-            control on top of the fixed-light card, not part of the box. */}
         <div className="absolute top-4 right-4 z-30">
           <motion.button
             ref={menuBtnRef}
@@ -437,11 +434,10 @@ export default function ContactSection() {
         </div>
 
         <div className="relative z-10">
-          <h2 className="font-display text-xl sm:text-2xl font-semibold mb-6" style={{ color: CHIP_TEXT }}>
-            Looking for the right <span className="italic font-thin-serif">project</span> to build.
-          </h2>
+          <h2 className="font-display text-xl sm:text-2xl font-normal mb-6" style={{ color: CHIP_TEXT }}>
+  Looking for the right <span className="italic font-thin-serif">project</span> to build.
+</h2>
 
-          {/* Copy-to-clipboard email, with a visible affordance + confirmation */}
           <button
             onClick={handleCopyEmail}
             aria-label={copied ? "Email copied" : `Copy email address ${CONTACT_EMAIL}`}
@@ -457,16 +453,9 @@ export default function ContactSection() {
             {copied ? "Email address copied to clipboard" : ""}
           </span>
 
-          {/* Invisible spacer - reserves the resting room for the icons below
-              the button so the card has the right height; the actual chips
-              live in the full-card stage layered behind this content. */}
-          <div className="mt-8 h-[220px] sm:h-[110px] w-full" aria-hidden="true" />
+          <div className="mt-8 md:h-[100px] h-[110px] w-full" aria-hidden="true" />
         </div>
 
-        {/* Physics stage - `overflow-hidden` now lives here (not on the card
-            itself), so falling chips are still clipped to the card's rounded
-            shape while the quick-links panel above is free to sit slightly
-            outside strict card bounds without being cut off. */}
         <div
           ref={stageRef}
           aria-label="Draggable contact links"

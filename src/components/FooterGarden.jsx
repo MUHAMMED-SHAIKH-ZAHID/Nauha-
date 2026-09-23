@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
 
 const LANTANA_COLORWAYS = [
@@ -23,6 +24,130 @@ function bezierPoint(t, x0, y0, cx, cy, x2, y2) {
   return { x: mt * mt * x0 + 2 * mt * t * cx + t * t * x2, y: mt * mt * y0 + 2 * mt * t * cy + t * t * y2 };
 }
 
+// Small equalizer bars instead of a static emoji - a real visual metaphor
+// for "this plays sound," and when it's actually playing, the bars visibly
+// animate (Apple Design §13: the visual must fire in the same frame as the
+// actual state, not just an icon swap that could drift out of sync).
+function SoundWaves({ playing, reduceMotion }) {
+  const bars = [0, 1, 2];
+  return (
+    <span className="flex items-end gap-[2.5px] h-3.5" aria-hidden="true">
+      {bars.map((i) => (
+        <motion.span
+          key={i}
+          className="w-[2.5px] rounded-full bg-current"
+          animate={
+            playing && !reduceMotion
+              ? { height: ["30%", "100%", "45%", "80%", "30%"] }
+              : { height: "35%" }
+          }
+          transition={
+            playing && !reduceMotion
+              ? { duration: 0.9 + i * 0.15, repeat: Infinity, ease: "easeInOut", delay: i * 0.1 }
+              : { duration: 0.2 }
+          }
+        />
+      ))}
+    </span>
+  );
+}
+
+// Discoverable, theme-matched liquid-glass sound toggle - replaces the old
+// bare emoji circle entirely. See the mapped-changes list from the previous
+// message for exactly which Apple Design principle each piece answers.
+function SoundToggle({ soundOn, setSoundOn, audioRef, theme }) {
+  const reduceMotion = useReducedMotion();
+  const [hasNoticed, setHasNoticed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setExpanded(true), 900);
+    const t2 = setTimeout(() => setExpanded(false), 3400);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  function toggleSound() {
+    setHasNoticed(true);
+    setSoundOn((prev) => {
+      const next = !prev;
+      if (audioRef.current) {
+        if (next) audioRef.current.play().catch(() => {});
+        else audioRef.current.pause();
+      }
+      return next;
+    });
+  }
+
+  // Consolidated into ONE effect (was two separate ones fighting over the
+  // same audio element) - re-loads and resumes playback when theme swaps
+  // the track, but only if sound was already on.
+  useEffect(() => {
+    if (soundOn && audioRef.current) {
+      audioRef.current.load();
+      audioRef.current.play().catch(() => {});
+    }
+  }, [theme, soundOn, audioRef]);
+
+  const glass = {
+    background: theme === "dark"
+      ? "linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.55))",
+    backdropFilter: "blur(16px) saturate(180%)",
+    WebkitBackdropFilter: "blur(16px) saturate(180%)",
+    border: theme === "dark" ? "1px solid rgba(255,255,255,0.16)" : "1px solid rgba(255,255,255,0.7)",
+    boxShadow: theme === "dark"
+      ? "inset 0 1px 0 rgba(255,255,255,0.12), 0 6px 18px rgba(0,0,0,0.35)"
+      : "inset 0 1px 0 rgba(255,255,255,0.8), 0 6px 18px rgba(0,0,0,0.1)",
+    color: theme === "dark" ? "#fff" : "#2a2015",
+  };
+
+  return (
+    <motion.button
+      type="button"
+      onClick={toggleSound}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      aria-pressed={soundOn}
+      aria-label={soundOn ? "Mute ambient garden sound" : "Play ambient garden sound"}
+      layout
+      transition={{ type: "spring", bounce: 0, duration: 0.35 }}
+      whileTap={reduceMotion ? {} : { scale: 0.92 }}
+      className="absolute top-3 right-3 z-20 flex items-center gap-2 h-9 rounded-full overflow-hidden"
+      style={{ ...glass, paddingLeft: 10, paddingRight: 10 }}
+    >
+      {!hasNoticed && !reduceMotion && (
+        <motion.span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full"
+          style={{ border: `1.5px solid ${theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.25)"}` }}
+          animate={{ opacity: [0.6, 0, 0.6], scale: [1, 1.35, 1] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+
+      <SoundWaves playing={soundOn} reduceMotion={reduceMotion} />
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.span
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: "auto", opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+            className="text-[11px] font-medium whitespace-nowrap overflow-hidden"
+          >
+            {soundOn ? "Sound on" : "Ambient sound"}
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      <span className="sr-only" role="status" aria-live="polite">
+        {soundOn ? "Ambient garden sound is now playing" : "Ambient garden sound is muted"}
+      </span>
+    </motion.button>
+  );
+}
+
 export default function FooterGarden() {
   const { theme } = useTheme();
   const canvasRef = useRef(null);
@@ -31,6 +156,9 @@ export default function FooterGarden() {
   const [hiddenMsgVisible, setHiddenMsgVisible] = useState(false);
   const audioRef = useRef(null);
   const hasInteractedRef = useRef(false);
+  const reduceMotion = useReducedMotion();
+  const [inView, setInView] = useState(true);
+  const hiddenTabRef = useRef(typeof document !== "undefined" ? document.hidden : false);
 
   const stateRef = useRef({
     themeMix: theme === "dark" ? 1 : 0,
@@ -48,6 +176,7 @@ export default function FooterGarden() {
     birds: [], birdTimer: 0, pollen: [], stars: [], starsInit: false,
     shootingStar: null, shootTimer: 0, rain: null, rainTimer: 0, rainbowAlpha: 0,
     critter: null, critterTimer: 0, walkers: [], walkersInit: false,
+    ducks: [], ducksInit: false,
     flowers: [], fireflies: [], bees: [],
     lastSpawn: 0, plantedCount: 0, msgShown: false, maxFlowers: 40,
   });
@@ -74,7 +203,6 @@ export default function FooterGarden() {
     }
   }
 
-  // ---- petal / stem / leaf drawing ----
   function softPetal(ctx, cx, cy, angle, len, wid, colorDark, colorLight, alpha) {
     ctx.save();
     ctx.translate(cx, cy);
@@ -105,7 +233,6 @@ export default function FooterGarden() {
     ctx.fill();
   }
 
-  // Thinner stems, bigger leaves
   function drawStemAndLeaf(ctx, x, y, growT, fade, sway, stemH) {
     const stemLen = stemH * growT;
     const cxCtrl = x + sway * 0.5, cyCtrl = y - stemLen * 0.55;
@@ -277,6 +404,26 @@ export default function FooterGarden() {
     }
   }
 
+  // Pause the whole scene when it's off-screen or the tab is backgrounded -
+  // matches the same fix already applied to HangingBadge/ContactSection.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    function onVisibility() {
+      hiddenTabRef.current = document.hidden;
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -292,16 +439,15 @@ export default function FooterGarden() {
     }
 
     function seedInitialFlowers(rect) {
-      if (s.flowers.length > 0) return; // don't re-seed on later resizes
+      if (s.flowers.length > 0) return;
       const groundY = rect.height * GROUND_RATIO;
       const groundH = rect.height - groundY;
       let attempts = 0;
-      while (s.flowers.length < 40 && attempts < 160) {
+      while (s.flowers.length < 30 && attempts < 180) {
         attempts++;
         const x = 20 + Math.random() * (rect.width - 40);
         const y = groundY + 15 + Math.random() * (groundH - 25);
         if (isInPond(x, y, rect)) continue;
-        // Spawn already grown-in, staggered slightly so they don't all pop at once
         spawnFlower(x, y);
         s.flowers[s.flowers.length - 1].born = performance.now() - 700 - Math.random() * 1500;
       }
@@ -313,10 +459,20 @@ export default function FooterGarden() {
       canvas.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       s.maxFlowers =
-  rect.width < 640 ? 22 :
-  rect.width < 1024 ? 100 :
-  rect.width < 1600 ? 180 :
-  240;
+        rect.width < 640 ? 50 :
+        rect.width < 1024 ? 160 :
+        rect.width < 1600 ? 280 :
+        240;
+      // Bug fix: pollen/stars/ducks/walkers previously initialized ONCE and
+      // never reset, so after a resize they stayed frozen at old absolute
+      // pixel positions while the pond (which recomputes from live `rect`
+      // every frame) visually moved - a duck could end up outside the pond
+      // entirely. Resetting these flags here forces a clean re-init at the
+      // new size, same as everything else in the scene already does.
+      s.pollen = [];
+      s.starsInit = false;
+      s.ducksInit = false;
+      s.walkersInit = false;
       seedInitialFlowers(rect);
     }
     resize();
@@ -331,7 +487,7 @@ export default function FooterGarden() {
       if (now - s.lastSpawn < 150) return;
       const rect = canvas.getBoundingClientRect();
       if (p.y < rect.height * GROUND_RATIO) return;
-      if (isInPond(p.x, p.y, rect)) return; // no planting in the water
+      if (isInPond(p.x, p.y, rect)) return;
       s.lastSpawn = now;
       spawnFlower(p.x, p.y);
     }
@@ -351,7 +507,7 @@ export default function FooterGarden() {
     function onScroll() {
       const delta = Math.abs(window.scrollY - s.lastScrollY);
       s.lastScrollY = window.scrollY;
-      if (delta > 15) s.windGust = Math.min(1, s.windGust + delta / 200);
+      if (!reduceMotion && delta > 15) s.windGust = Math.min(1, s.windGust + delta / 200);
     }
     window.addEventListener("scroll", onScroll, { passive: true });
 
@@ -364,7 +520,6 @@ export default function FooterGarden() {
       for (let i = 0; i < 70; i++) s.stars.push({ x: Math.random() * rect.width, y: Math.random() * rect.height * GROUND_RATIO, phase: Math.random() * Math.PI * 2, speed: 0.001 + Math.random() * 0.002 });
     }
     function initWalkers(rect, groundY) {
-      // More people, and noticeably bigger (scale ~2.2x the old barely-visible size)
       s.walkers = [
         { x: rect.width * 0.28, y: groundY - 6, speed: 0.18, phase: 0, jog: false, scale: 2.2 },
         { x: rect.width * 0.42, y: groundY - 4, speed: -0.12, phase: 2, jog: true, scale: 2.4 },
@@ -455,58 +610,65 @@ export default function FooterGarden() {
         ctx.fillStyle = `rgba(255,233,168,${1 - s.themeMix * 2})`;
         ctx.beginPath(); ctx.arc(sunX, sunY, 16, 0, Math.PI * 2); ctx.fill();
 
-        if (now - s.gustTimer > 9000 + Math.random() * 5000) { s.gustTimer = now; s.windGust = Math.max(s.windGust, 0.7); }
-        s.windGust *= 0.985;
+        if (!reduceMotion) {
+          if (now - s.gustTimer > 9000 + Math.random() * 5000) { s.gustTimer = now; s.windGust = Math.max(s.windGust, 0.7); }
+          s.windGust *= 0.985;
+        } else {
+          s.windGust = 0;
+        }
 
         s.clouds.forEach((c) => {
-          let cx = ((c.baseX * rect.width + now * c.speed + s.windGust * 40) % (rect.width + 120)) - 60;
+          const speed = reduceMotion ? 0 : c.speed;
+          let cx = ((c.baseX * rect.width + now * speed + s.windGust * 40) % (rect.width + 120)) - 60;
           const cy = rect.height * c.y;
           const dx = s.mouseX - cx, dy = s.mouseY - cy, dist = Math.hypot(dx, dy);
           let px = 0, py = 0;
-          if (dist < 70 && dist > 0) { const f = (70 - dist) / 70; px = -(dx / dist) * f * 30; py = -(dy / dist) * f * 15; }
+          if (!reduceMotion && dist < 70 && dist > 0) { const f = (70 - dist) / 70; px = -(dx / dist) * f * 30; py = -(dy / dist) * f * 15; }
           drawCloud(cx + px, cy + py, c.s, 0.9 * (1 - s.themeMix));
         });
 
-        s.pollen.forEach((p) => {
-          p.y -= p.speed; p.x += Math.sin(now * 0.001 + p.phase) * 0.3;
-          if (p.y < 0) { p.y = rect.height * GROUND_RATIO; p.x = Math.random() * rect.width; }
-          ctx.fillStyle = "rgba(255,250,220,0.5)";
-          ctx.beginPath(); ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2); ctx.fill();
-        });
-
-        if (now - s.birdTimer > 4500 + Math.random() * 3500) {
-          s.birdTimer = now;
-          s.birds.push({ x: -20, y: rect.height * (0.08 + Math.random() * 0.2), speed: 0.6 + Math.random() * 0.4, flapPhase: Math.random() * 10, bobPhase: Math.random() * 10 });
-        }
-        s.birds = s.birds.filter((b) => b.x < rect.width + 30);
-        s.birds.forEach((b) => {
-          b.x += b.speed;
-          const y = b.y + Math.sin(now * 0.002 + b.bobPhase) * 6;
-          const flap = Math.sin(now * 0.02 + b.flapPhase) * 8;
-          ctx.strokeStyle = "rgba(60,50,40,0.75)"; ctx.lineWidth = 1.6;
-          ctx.beginPath(); ctx.moveTo(b.x - 7, y + flap * 0.3); ctx.quadraticCurveTo(b.x, y - flap, b.x + 7, y + flap * 0.3); ctx.stroke();
-        });
-
-        if (now - s.rainTimer > 16000 + Math.random() * 9000 && !s.rain) {
-          s.rainTimer = now;
-          s.rain = { life: 0, drops: Array.from({ length: 55 }, () => ({ x: Math.random() * rect.width, y: Math.random() * rect.height * GROUND_RATIO, speed: 6 + Math.random() * 3 })) };
-        }
-        if (s.rain) {
-          s.rain.life++;
-          ctx.strokeStyle = "rgba(150,180,210,0.5)"; ctx.lineWidth = 1;
-          s.rain.drops.forEach((d) => {
-            d.y += d.speed;
-            if (d.y > rect.height * GROUND_RATIO) { d.y = 0; d.x = Math.random() * rect.width; }
-            ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 2, d.y + 8); ctx.stroke();
+        if (!reduceMotion) {
+          s.pollen.forEach((p) => {
+            p.y -= p.speed; p.x += Math.sin(now * 0.001 + p.phase) * 0.3;
+            if (p.y < 0) { p.y = rect.height * GROUND_RATIO; p.x = Math.random() * rect.width; }
+            ctx.fillStyle = "rgba(255,250,220,0.5)";
+            ctx.beginPath(); ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2); ctx.fill();
           });
-          if (s.rain.life > 180) { s.rain = null; s.rainbowAlpha = 1; }
-        }
-        if (s.rainbowAlpha > 0) {
-          s.rainbowAlpha -= 0.003;
-          ["rgba(255,0,0,", "rgba(255,165,0,", "rgba(255,255,0,", "rgba(0,180,0,", "rgba(0,0,255,", "rgba(120,0,180,"].forEach((c, i) => {
-            ctx.strokeStyle = c + 0.35 * s.rainbowAlpha + ")"; ctx.lineWidth = 6;
-            ctx.beginPath(); ctx.arc(rect.width * 0.3, rect.height * GROUND_RATIO, 110 - i * 6, Math.PI, Math.PI * 1.6); ctx.stroke();
+
+          if (now - s.birdTimer > 4500 + Math.random() * 3500) {
+            s.birdTimer = now;
+            s.birds.push({ x: -20, y: rect.height * (0.08 + Math.random() * 0.2), speed: 0.6 + Math.random() * 0.4, flapPhase: Math.random() * 10, bobPhase: Math.random() * 10 });
+          }
+          s.birds = s.birds.filter((b) => b.x < rect.width + 30);
+          s.birds.forEach((b) => {
+            b.x += b.speed;
+            const y = b.y + Math.sin(now * 0.002 + b.bobPhase) * 6;
+            const flap = Math.sin(now * 0.02 + b.flapPhase) * 8;
+            ctx.strokeStyle = "rgba(60,50,40,0.75)"; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.moveTo(b.x - 7, y + flap * 0.3); ctx.quadraticCurveTo(b.x, y - flap, b.x + 7, y + flap * 0.3); ctx.stroke();
           });
+
+          if (now - s.rainTimer > 16000 + Math.random() * 9000 && !s.rain) {
+            s.rainTimer = now;
+            s.rain = { life: 0, drops: Array.from({ length: 55 }, () => ({ x: Math.random() * rect.width, y: Math.random() * rect.height * GROUND_RATIO, speed: 6 + Math.random() * 3 })) };
+          }
+          if (s.rain) {
+            s.rain.life++;
+            ctx.strokeStyle = "rgba(150,180,210,0.5)"; ctx.lineWidth = 1;
+            s.rain.drops.forEach((d) => {
+              d.y += d.speed;
+              if (d.y > rect.height * GROUND_RATIO) { d.y = 0; d.x = Math.random() * rect.width; }
+              ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 2, d.y + 8); ctx.stroke();
+            });
+            if (s.rain.life > 180) { s.rain = null; s.rainbowAlpha = 1; }
+          }
+          if (s.rainbowAlpha > 0) {
+            s.rainbowAlpha -= 0.003;
+            ["rgba(255,0,0,", "rgba(255,165,0,", "rgba(255,255,0,", "rgba(0,180,0,", "rgba(0,0,255,", "rgba(120,0,180,"].forEach((c, i) => {
+              ctx.strokeStyle = c + 0.35 * s.rainbowAlpha + ")"; ctx.lineWidth = 6;
+              ctx.beginPath(); ctx.arc(rect.width * 0.3, rect.height * GROUND_RATIO, 110 - i * 6, Math.PI, Math.PI * 1.6); ctx.stroke();
+            });
+          }
         }
       }
 
@@ -521,20 +683,22 @@ export default function FooterGarden() {
         ctx.beginPath(); ctx.arc(moonX, moonY, 15, 0, Math.PI * 2); ctx.fill();
 
         s.stars.forEach((st) => {
-          const tw = 0.4 + 0.6 * Math.abs(Math.sin(now * st.speed + st.phase));
+          const tw = reduceMotion ? 0.7 : 0.4 + 0.6 * Math.abs(Math.sin(now * st.speed + st.phase));
           ctx.fillStyle = `rgba(255,255,255,${tw * s.themeMix})`;
           ctx.beginPath(); ctx.arc(st.x, st.y, 1.1, 0, Math.PI * 2); ctx.fill();
         });
 
-        if (now - s.shootTimer > 5500 + Math.random() * 4500 && !s.shootingStar) {
-          s.shootTimer = now;
-          s.shootingStar = { x: Math.random() * rect.width * 0.5, y: Math.random() * rect.height * 0.2, vx: 5, vy: 2.5, life: 0 };
-        }
-        if (s.shootingStar) {
-          s.shootingStar.x += s.shootingStar.vx; s.shootingStar.y += s.shootingStar.vy; s.shootingStar.life++;
-          ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 1 - s.shootingStar.life / 20)})`; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.moveTo(s.shootingStar.x, s.shootingStar.y); ctx.lineTo(s.shootingStar.x - 16, s.shootingStar.y - 8); ctx.stroke();
-          if (s.shootingStar.life > 20) s.shootingStar = null;
+        if (!reduceMotion) {
+          if (now - s.shootTimer > 5500 + Math.random() * 4500 && !s.shootingStar) {
+            s.shootTimer = now;
+            s.shootingStar = { x: Math.random() * rect.width * 0.5, y: Math.random() * rect.height * 0.2, vx: 5, vy: 2.5, life: 0 };
+          }
+          if (s.shootingStar) {
+            s.shootingStar.x += s.shootingStar.vx; s.shootingStar.y += s.shootingStar.vy; s.shootingStar.life++;
+            ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 1 - s.shootingStar.life / 20)})`; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(s.shootingStar.x, s.shootingStar.y); ctx.lineTo(s.shootingStar.x - 16, s.shootingStar.y - 8); ctx.stroke();
+            if (s.shootingStar.life > 20) s.shootingStar = null;
+          }
         }
       }
     }
@@ -560,33 +724,38 @@ export default function FooterGarden() {
       drawPond(rect, groundY, now, dayAlpha);
 
       if (!s.ducksInit) initDucks(rect, groundY);
-      if (dayAlpha > 0.3) s.ducks.forEach((d) => drawDuck(d, now));
+      if (dayAlpha > 0.3) s.ducks.forEach((d) => drawDuck(d, reduceMotion ? 0 : now));
 
-      // More trees, noticeably bigger, spread across the width (kept clear of the pond)
       [0.3, 0.42, 0.56, 0.68, 0.82, 0.94].forEach((fx, i) =>
         drawTree(rect.width * fx, groundY + 6, (1.6 + (i % 3) * 0.25) * (0.8 + dayAlpha * 0.2))
       );
 
       if (!s.walkersInit) initWalkers(rect, groundY);
-      s.walkers.forEach((w) => {
-        w.x += w.speed;
-        if (w.x < 0) w.x = rect.width;
-        if (w.x > rect.width) w.x = 0;
-        drawWalker(w, now);
-      });
+      if (!reduceMotion) {
+        s.walkers.forEach((w) => {
+          w.x += w.speed;
+          if (w.x < 0) w.x = rect.width;
+          if (w.x > rect.width) w.x = 0;
+          drawWalker(w, now);
+        });
+      } else {
+        s.walkers.forEach((w) => drawWalker(w, 0));
+      }
 
-      if (!s.critter && now - s.critterTimer > 11000 + Math.random() * 8000) { s.critterTimer = now; s.critter = { x: -20, y: groundY - 6, life: 0 }; }
-      if (s.critter) {
-        s.critter.x += 1.2; s.critter.life++;
-        const hop = Math.abs(Math.sin(s.critter.life * 0.15)) * 6;
-        ctx.fillStyle = s.themeMix > 0.5 ? "rgba(200,200,200,0.7)" : "rgba(120,90,70,0.85)";
-        ctx.beginPath(); ctx.ellipse(s.critter.x, s.critter.y - hop, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
-        if (s.critter.x > rect.width + 20) s.critter = null;
+      if (!reduceMotion) {
+        if (!s.critter && now - s.critterTimer > 11000 + Math.random() * 8000) { s.critterTimer = now; s.critter = { x: -20, y: groundY - 6, life: 0 }; }
+        if (s.critter) {
+          s.critter.x += 1.2; s.critter.life++;
+          const hop = Math.abs(Math.sin(s.critter.life * 0.15)) * 6;
+          ctx.fillStyle = s.themeMix > 0.5 ? "rgba(200,200,200,0.7)" : "rgba(120,90,70,0.85)";
+          ctx.beginPath(); ctx.ellipse(s.critter.x, s.critter.y - hop, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+          if (s.critter.x > rect.width + 20) s.critter = null;
+        }
       }
     }
 
     function drawFirefly(f, now) {
-      const pulse = 0.4 + 0.6 * Math.abs(Math.sin(now * 0.003 + f.phase));
+      const pulse = reduceMotion ? 0.7 : 0.4 + 0.6 * Math.abs(Math.sin(now * 0.003 + f.phase));
       ctx.fillStyle = `rgba(220,255,140,${pulse * 0.9})`;
       ctx.beginPath(); ctx.arc(f.x, f.y, 2.2, 0, Math.PI * 2); ctx.fill();
     }
@@ -596,10 +765,17 @@ export default function FooterGarden() {
     }
 
     function step() {
+      // Skip all simulation work while off-screen/backgrounded, but keep
+      // scheduling frames so it resumes instantly once visible again.
+      if (hiddenTabRef.current || !inView) {
+        rafId = requestAnimationFrame(step);
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const now = performance.now();
       drawSky(rect, now);
-      if (s.pollen.length === 0) initPollen(rect);
+      if (s.pollen.length === 0 && !reduceMotion) initPollen(rect);
       drawParkGround(rect, now);
 
       if (s.flowers.length > s.maxFlowers) {
@@ -608,37 +784,39 @@ export default function FooterGarden() {
       }
       s.flowers = s.flowers.filter((f) => !(f.fadeOutStart && now - f.fadeOutStart > 900));
 
-      if (s.themeMix < 0.5 && s.flowers.length >= 6 && s.bees.length < 2 && Math.random() < 0.005) {
-        s.bees.push({ x: Math.random() * rect.width, y: rect.height * 0.9, target: null });
-      }
-      s.bees.forEach((b) => {
-        if (!b.target || Math.hypot(b.target.x - b.x, b.target.y - b.y) < 4) {
-          const t = s.flowers[Math.floor(Math.random() * s.flowers.length)];
-          if (t) b.target = { x: t.x, y: t.y - t.stemH * 0.9 };
+      if (!reduceMotion) {
+        if (s.themeMix < 0.5 && s.flowers.length >= 6 && s.bees.length < 2 && Math.random() < 0.005) {
+          s.bees.push({ x: Math.random() * rect.width, y: rect.height * 0.9, target: null });
         }
-        if (b.target) { b.x += (b.target.x - b.x) * 0.03; b.y += (b.target.y - b.y) * 0.03; }
-        drawBee(b);
-      });
+        s.bees.forEach((b) => {
+          if (!b.target || Math.hypot(b.target.x - b.x, b.target.y - b.y) < 4) {
+            const t = s.flowers[Math.floor(Math.random() * s.flowers.length)];
+            if (t) b.target = { x: t.x, y: t.y - t.stemH * 0.9 };
+          }
+          if (b.target) { b.x += (b.target.x - b.x) * 0.03; b.y += (b.target.y - b.y) * 0.03; }
+          drawBee(b);
+        });
 
-      if (s.themeMix > 0.5 && s.flowers.length >= FIREFLY_THRESHOLD && s.fireflies.length < MAX_FIREFLIES && Math.random() < 0.008) {
-        s.fireflies.push({ x: Math.random() * rect.width, y: rect.height * GROUND_RATIO * 0.5 + Math.random() * rect.height * GROUND_RATIO * 0.4, angle: Math.random() * Math.PI * 2, speed: 0.3 + Math.random() * 0.2, phase: Math.random() * 10, turnPhase: Math.random() * 10 });
+        if (s.themeMix > 0.5 && s.flowers.length >= FIREFLY_THRESHOLD && s.fireflies.length < MAX_FIREFLIES && Math.random() < 0.008) {
+          s.fireflies.push({ x: Math.random() * rect.width, y: rect.height * GROUND_RATIO * 0.5 + Math.random() * rect.height * GROUND_RATIO * 0.4, angle: Math.random() * Math.PI * 2, speed: 0.3 + Math.random() * 0.2, phase: Math.random() * 10, turnPhase: Math.random() * 10 });
+        }
+        if (s.themeMix < 0.3) s.fireflies = [];
+        s.fireflies.forEach((f) => {
+          f.turnPhase += 0.01; f.angle += Math.sin(f.turnPhase) * 0.04;
+          f.x += Math.cos(f.angle) * f.speed; f.y += Math.sin(f.angle) * f.speed * 0.5;
+          if (f.x < 0) f.x = rect.width; if (f.x > rect.width) f.x = 0;
+          if (f.y < rect.height * GROUND_RATIO * 0.4) f.y = rect.height * GROUND_RATIO * 0.4;
+          if (f.y > rect.height * GROUND_RATIO) f.y = rect.height * GROUND_RATIO;
+          drawFirefly(f, now);
+        });
       }
-      if (s.themeMix < 0.3) s.fireflies = [];
-      s.fireflies.forEach((f) => {
-        f.turnPhase += 0.01; f.angle += Math.sin(f.turnPhase) * 0.04;
-        f.x += Math.cos(f.angle) * f.speed; f.y += Math.sin(f.angle) * f.speed * 0.5;
-        if (f.x < 0) f.x = rect.width; if (f.x > rect.width) f.x = 0;
-        if (f.y < rect.height * GROUND_RATIO * 0.4) f.y = rect.height * GROUND_RATIO * 0.4;
-        if (f.y > rect.height * GROUND_RATIO) f.y = rect.height * GROUND_RATIO;
-        drawFirefly(f, now);
-      });
 
       s.flowers.forEach((f) => {
         const growSpeed = s.mouseDown && Math.hypot(s.mouseX - f.x, s.mouseY - f.y) < 40 ? 2.2 : 1;
         const t = (now - f.born) * growSpeed;
-        const growT = Math.min(t / 700, 1);
+        const growT = reduceMotion ? 1 : Math.min(t / 700, 1);
         const fade = f.fadeOutStart ? Math.max(0, 1 - (now - f.fadeOutStart) / 900) : 1;
-        const sway = Math.sin(now * f.swaySpeed + f.swayPhase) * f.swayAmp * growT + s.windGust * 6;
+        const sway = reduceMotion ? 0 : Math.sin(now * f.swaySpeed + f.swayPhase) * f.swayAmp * growT + s.windGust * 6;
         groundShadow(ctx, f.x, f.y, 6 * growT, 0.12 * fade);
         const { topX, topY, cxCtrl, cyCtrl } = drawStemAndLeaf(ctx, f.x, f.y, growT, fade, sway, f.stemH);
         if (growT > 0.5) {
@@ -672,44 +850,29 @@ export default function FooterGarden() {
       canvas.removeEventListener("touchend", onUp);
       window.removeEventListener("scroll", onScroll);
     };
-  }, [theme, getPoint]);
-
-  function toggleSound() {
-    setSoundOn((prev) => {
-      const next = !prev;
-      if (audioRef.current) {
-        if (next) audioRef.current.play().catch((err) => console.error("Audio play failed:", err));
-        else audioRef.current.pause();
-      }
-      return next;
-    });
-  }
-
-  useEffect(() => {
-  if (soundOn && audioRef.current) {
-    audioRef.current.load(); // pick up the new src
-    audioRef.current.play().catch(() => {});
-  }
-}, [theme, soundOn]);
+  }, [theme, getPoint, reduceMotion, inView]);
 
   return (
-    <div id="playground" className="relative bg-white !dark:bg-black w-full h-[380px] sm:h-[460px] rounded-t-3xl overflow-hidden">
-      <canvas ref={canvasRef} className="absolute  bg-white dark:bg-black inset-0 w-full h-full cursor-crosshair" />
+    <div id="playground" className="relative w-full h-[380px] sm:h-[460px] rounded-t-3xl overflow-hidden">
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-crosshair" />
       <audio
-  ref={audioRef}
-  loop
-  src={theme === "dark" ? "/audio/ambient-garden-night.mp3" : "/audio/ambient-garden-day.mp3"}
-/>
+        ref={audioRef}
+        loop
+        src={theme === "dark" ? "/audio/ambient-garden-night.mp3" : "/audio/ambient-garden-day.mp3"}
+      />
 
-    
-      <button
-        onClick={toggleSound}
-        aria-label={soundOn ? "Mute ambient sound" : "Play ambient sound"}
-        className="absolute top-3 right-3 z-20 w-9 h-9 rounded-full flex items-center justify-center text-sm"
-        style={{ background: theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.7)", color: theme === "dark" ? "#fff" : "#2a2015", backdropFilter: "blur(6px)" }}
+      <SoundToggle soundOn={soundOn} setSoundOn={setSoundOn} audioRef={audioRef} theme={theme} />
+
+      <div
+        className="absolute inset-0 z-10 flex flex-col items-center pt-8 sm:pt-10 px-4 text-center pointer-events-none transition-opacity duration-500"
+        style={{ opacity: textHidden ? 0 : 1 }}
       >
-        {soundOn ? "🔊" : "🔈"}
-      </button>
+        <p className="font-thin-serif italic text-xl sm:text-2xl mb-1" style={{ color: "#2a2015" }}>{greeting}</p>
+        <p className="text-xs sm:text-sm" style={{ color: "#5a4d3a" }}>Move your cursor near the ground. Hold to grow faster.</p>
+        <p className="text-xs mt-2 transition-opacity duration-1000" style={{ color: "#5a4d3a", opacity: hiddenMsgVisible ? 1 : 0 }}>
+          You've planted quite a garden.
+        </p>
+      </div>
     </div>
   );
 }
