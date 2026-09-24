@@ -200,6 +200,12 @@ export default function ContactSection() {
             b.angularVel += (Math.random() - 0.5) * 1.2;
             if (Math.abs(b.vy) < 0.6) b.vy = 0;
           }
+          // Was missing entirely - a fast upward flick-release had nothing
+          // to bounce off at the top, so the chip would sail above the
+          // card (only hidden by overflow-hidden, not actually stopped)
+          // before gravity eventually pulled it back down. This mirrors
+          // the floor/left/right bounce so all four sides are real walls.
+          if (b.y < 0) { b.y = 0; b.vy = Math.abs(b.vy) * REST; }
           if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx) * REST; }
           if (b.x + b.size > w) { b.x = w - b.size; b.vx = -Math.abs(b.vx) * REST; }
         });
@@ -296,8 +302,21 @@ export default function ContactSection() {
     const dt = Math.max(now - dragRef.current.lastTime, 1);
     dragRef.current.vx = dragRef.current.vx * 0.5 + ((p.x - dragRef.current.lastPos.x) / dt * 18) * 0.5;
     dragRef.current.vy = dragRef.current.vy * 0.5 + ((p.y - dragRef.current.lastPos.y) / dt * 18) * 0.5;
-    body.x = p.x - body.size / 2;
-    body.y = p.y - body.size / 2;
+    // Clamp to the stage's own box (0,0) to (w - size, h - size) - this is
+    // the actual fix for "can go outside the box while dragging". The
+    // physics step's wall-bounce code only ever runs for bodies that
+    // AREN'T being dragged (`if (b.dragging) return;` skips it), so until
+    // now a drag itself had zero bounds on any side - your cursor could
+    // carry the chip anywhere, it was only ever hidden from view by the
+    // stage's `overflow-hidden`, not actually stopped. Clamping the
+    // position here, every frame, while you're still holding it, means it
+    // physically can't cross the top/bottom/left/right edges at all, not
+    // even briefly off-screen.
+    const stage = stageRef.current;
+    const maxX = Math.max(0, stage.clientWidth - body.size);
+    const maxY = Math.max(0, stage.clientHeight - body.size);
+    body.x = Math.min(Math.max(p.x - body.size / 2, 0), maxX);
+    body.y = Math.min(Math.max(p.y - body.size / 2, 0), maxY);
     dragRef.current.movedDist = Math.hypot(p.x - dragRef.current.startPos.x, p.y - dragRef.current.startPos.y);
     dragRef.current.lastPos = p;
     dragRef.current.lastTime = now;
@@ -383,7 +402,8 @@ export default function ContactSection() {
             whileTap={reduceMotion ? {} : { scale: 0.92 }}
             whileHover={reduceMotion ? {} : { scale: 1.05 }}
             transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-full shadow-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+            className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-full shadow-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 dark:focus-visible:ring-white/50"
+            style={{ WebkitTapHighlightColor: "transparent" }}
           >
             <motion.span
               animate={{ rotate: menuOpen ? 45 : 0 }}
@@ -423,7 +443,9 @@ export default function ContactSection() {
                     className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium
                                text-neutral-900 dark:text-white
                                hover:bg-black/[0.04] dark:hover:bg-white/10
-                               active:bg-black/[0.07] dark:active:bg-white/15 transition-colors"
+                               active:bg-black/[0.07] dark:active:bg-white/15 transition-colors
+                               outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/30 dark:focus-visible:ring-white/40"
+                    style={{ WebkitTapHighlightColor: "transparent" }}
                   >
                     <span className="grid place-items-center w-7 h-7 rounded-full bg-black/[0.06] dark:bg-white/10">
                       <ic.Icon size={15} strokeWidth={1.8} />
@@ -445,8 +467,8 @@ export default function ContactSection() {
           <button
             onClick={handleCopyEmail}
             aria-label={copied ? "Email copied" : `Copy email address ${CONTACT_EMAIL}`}
-            className="relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-transform duration-150 hover:scale-[1.03] active:scale-[0.97]"
-            style={{ background: "#fff", color: "#111", border: "1px solid rgba(0,0,0,0.08)" }}
+            className="relative inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-transform duration-150 hover:scale-[1.03] active:scale-[0.97] outline-none focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2"
+            style={{ background: "#fff", color: "#111", border: "1px solid rgba(0,0,0,0.08)", WebkitTapHighlightColor: "transparent" }}
           >
             {CONTACT_EMAIL}
             <span className="grid place-items-center w-4 h-4 shrink-0">
@@ -491,7 +513,7 @@ export default function ContactSection() {
               onClick={onChipClick}
               aria-label={ic.label}
               title={ic.label}
-              className="absolute top-0 left-0 rounded-full flex items-center justify-center select-none cursor-grab active:cursor-grabbing pointer-events-auto"
+              className="absolute top-0 left-0 rounded-full flex items-center justify-center select-none cursor-grab active:cursor-grabbing pointer-events-auto outline-none focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 dark:focus-visible:ring-white/50"
               style={{
                 width: CHIP_SIZE,
                 height: CHIP_SIZE,
@@ -504,6 +526,21 @@ export default function ContactSection() {
                 boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
                 transition: "box-shadow 0.15s ease, border-color 0.15s ease",
                 willChange: "transform",
+                // iOS Safari treats a plain <a href> as a long-press target:
+                // hold it for ~500ms and it pops the "Open / Open in New Tab
+                // / Copy Link" preview card, right in the middle of what
+                // should be a drag gesture - that's very likely the
+                // "sticks/hesitates, mainly on iOS" feeling, and it's a
+                // platform quirk, not your phone. `-webkit-touch-callout:
+                // none` turns that popup off. `-webkit-tap-highlight-color:
+                // transparent` kills the separate gray/blue flash Safari and
+                // Chrome both paint on tap, which otherwise flickers under
+                // your finger at the start of every drag. Neither property
+                // exists outside WebKit/Blink, so this is a harmless no-op
+                // anywhere else (Firefox desktop, etc).
+                WebkitTouchCallout: "none",
+                WebkitTapHighlightColor: "transparent",
+                WebkitUserSelect: "none",
               }}
             >
               <ic.Icon size={22} strokeWidth={1.8} />

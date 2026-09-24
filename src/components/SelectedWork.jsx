@@ -85,11 +85,17 @@ const headingFade = {
   visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 170, damping: 22, mass: 0.9 } },
 };
 
+// No `backdropFilter` here on purpose. A blur filter on an element that
+// sits inside a track being transformed 60x/sec during scroll forces the
+// browser to recomposite that blur every frame - on mid-range/older
+// iPhones under Safari that alone is enough to turn a scroll janky. A
+// slightly more opaque flat background reads almost identically and
+// costs nothing to paint.
 function ScreenChrome({ domain }) {
   return (
     <div
       className="absolute top-0 inset-x-0 h-[7%] min-h-[18px] flex items-center gap-1 px-[3%] z-10"
-      style={{ background: "rgba(0,0,0,0.34)", backdropFilter: "blur(2px)" }}
+      style={{ background: "rgba(0,0,0,0.45)" }}
     >
       <span className="w-[6px] h-[6px] rounded-full" style={{ background: "#ff5f57" }} />
       <span className="w-[6px] h-[6px] rounded-full" style={{ background: "#febc2e" }} />
@@ -100,6 +106,7 @@ function ScreenChrome({ domain }) {
     </div>
   );
 }
+
 function SlideInHeading() {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
@@ -146,40 +153,36 @@ function LoopVideo({ src, active }) {
   );
 }
 
-function DraggableLongScreenshot({ src, alt, frameRef }) {
-  const imgRef = useRef(null);
-  const [maxDrag, setMaxDrag] = useState(0);
-  const [hasDragged, setHasDragged] = useState(false);
-
-  useEffect(() => {
-    function measure() {
-      if (!imgRef.current || !frameRef.current) return;
-      setMaxDrag(Math.max(0, imgRef.current.offsetHeight - frameRef.current.offsetHeight));
-    }
-    const img = imgRef.current;
-    if (img?.complete) measure();
-    img?.addEventListener("load", measure);
-    window.addEventListener("resize", measure);
-    return () => {
-      img?.removeEventListener("load", measure);
-      window.removeEventListener("resize", measure);
-    };
-  }, [src, frameRef]);
-
+// Was a framer-motion `drag="y"` image with `touch-action: none`. That's
+// the bug behind the "stuck on iPhone" report: disabling touch-action on
+// an element means the browser hands EVERY touch there to the JS drag
+// recognizer instead of to page scroll - so a visitor trying to keep
+// scrolling the page (which is what advances the horizontal track) while
+// their finger happens to land on the phone screen gets their gesture
+// hijacked into dragging the screenshot instead, and the page just stops
+// moving. It's a textbook "vertical drag inside a vertically-scrolling
+// page" conflict.
+//
+// Native scroll fixes it outright: it's hardware-accelerated (no JS runs
+// per touch-move frame, which is also just lighter/less "heavy" on its
+// own), AND once the inner image hits the top/bottom of its own scroll
+// range, the browser automatically chains the rest of that scroll gesture
+// up to the page - so scrolling never dead-ends here, it just continues
+// past. That handoff is exactly the behavior the old drag-with-clamped-
+// constraints version was trying to hand-roll, for free, from the
+// platform.
+function ScrollableLongScreenshot({ src, alt }) {
+  const [hasScrolled, setHasScrolled] = useState(false);
   return (
     <>
-      <motion.img
-        ref={imgRef}
-        src={src}
-        alt={alt}
-        drag="y"
-        dragConstraints={{ top: -maxDrag, bottom: 0 }}
-        dragElastic={0.06}
-        onDragStart={() => setHasDragged(true)}
-        draggable={false}
-        className="w-full h-auto cursor-grab active:cursor-grabbing select-none touch-none"
-      />
-      {!hasDragged && maxDrag > 0 && (
+      <div
+        className="absolute inset-0 overflow-y-auto"
+        style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}
+        onScroll={() => setHasScrolled(true)}
+      >
+        <img src={src} alt={alt} draggable={false} className="w-full h-auto select-none" />
+      </div>
+      {!hasScrolled && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -188,7 +191,7 @@ function DraggableLongScreenshot({ src, alt, frameRef }) {
           style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}
         >
           <Hand size={10} strokeWidth={2} />
-          Drag to explore
+          Scroll to explore
         </motion.div>
       )}
     </>
@@ -207,13 +210,12 @@ function Shadow() {
 
 function DeviceMockup({ project, active }) {
   const spec = DEVICE_SPECS[project.device];
-  const screenRef = useRef(null);
 
   let content;
   if (project.device === "mac") {
     content = <LoopVideo src={project.video} active={active} />;
   } else if (project.device === "iphone") {
-    content = <DraggableLongScreenshot src={project.longImage} alt={project.name} frameRef={screenRef} />;
+    content = <ScrollableLongScreenshot src={project.longImage} alt={project.name} />;
   } else {
     content = <img src={project.image} alt={project.name} draggable={false} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />;
   }
@@ -221,7 +223,6 @@ function DeviceMockup({ project, active }) {
   return (
     <div className="relative mx-auto" style={deviceBoxStyle(spec)}>
       <div
-        ref={screenRef}
         className="absolute overflow-hidden"
         style={{
           left: `${spec.screen.left}%`,
@@ -276,9 +277,6 @@ function ProjectDetails({ project, active }) {
         {project.name}
       </motion.h3>
 
-      {/* Was hidden entirely below sm: - now always visible, clamped to 2
-          lines on small screens so real content shows everywhere instead
-          of being deleted for mobile visitors. */}
       <motion.p
         variants={item}
         className="text-xs sm:text-sm sm:text-[15px] text-black/60 dark:text-white/60 mt-2 sm:mt-3 max-w-sm mx-auto md:mx-0
@@ -306,17 +304,11 @@ function ProjectDetails({ project, active }) {
 function ProgressDot({ index, total, scrollYProgress }) {
   const center = index / Math.max(1, total - 1);
   const gap = 0.5 / Math.max(1, total - 1);
-  // Was opacity [0.3, 1, 0.3] and a fixed small size - now the active dot
-  // also grows slightly, giving a clearer "you are here" signal than
-  // opacity contrast alone provides.
   const opacity = useTransform(scrollYProgress, [Math.max(0, center - gap), center, Math.min(1, center + gap)], [0.25, 1, 0.25]);
   const scale = useTransform(scrollYProgress, [Math.max(0, center - gap), center, Math.min(1, center + gap)], [1, 1.6, 1]);
   return <motion.span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white" style={{ opacity, scale }} />;
 }
 
-// New: explicit "2 / 3" style counter, updating live off the same
-// scrollYProgress everything else already tracks - a direct, unambiguous
-// answer to "where am I" instead of relying on dot-squinting alone.
 function PanelCounter({ total, scrollYProgress }) {
   const [current, setCurrent] = useState(1);
   useEffect(
@@ -333,6 +325,7 @@ function PanelCounter({ total, scrollYProgress }) {
     </span>
   );
 }
+
 function ProjectPanel({ project, scrollYProgress, index, total }) {
   const center = index / Math.max(1, total - 1);
   const halfGap = 0.5 / Math.max(1, total - 1);
@@ -352,9 +345,6 @@ function ProjectPanel({ project, scrollYProgress, index, total }) {
         <div className="flex items-center justify-center">
           <DeviceMockup project={project} active={active} />
         </div>
-        {/* Was: <ProjectDetails project={project} /> - now shares the SAME
-            active flag the device already tracks, instead of two
-            components that never talk to each other. */}
         <ProjectDetails project={project} active={active} />
       </div>
     </div>
@@ -366,15 +356,6 @@ function ScrollTrack() {
   const reduceMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: trackRef, offset: ["start start", "end end"] });
   const rawX = useTransform(scrollYProgress, [0, 1], ["0vw", `-${(PROJECTS.length - 1) * 100}vw`]);
-  // Apple Design §4: was stiffness 220 / damping 32 / mass 0.6 - critical
-  // damping at that stiffness+mass is ~23, so damping 32 was meaningfully
-  // OVER-damped. For a spring continuously chasing a live, ever-changing
-  // scroll position (not settling to one fixed target), over-damping shows
-  // up as visible lag between your actual scroll and what's on screen -
-  // the "not smooth" feeling. `bounce: 0` keeps it critically damped (no
-  // overshoot - still correct, since a scroll-follower shouldn't bounce),
-  // and a short `duration` keeps it tight enough to track scroll closely
-  // while still smoothing out trackpad/wheel jitter.
   const springX = useSpring(rawX, { type: "spring", bounce: 0, duration: 0.28 });
   const x = reduceMotion ? rawX : springX;
 
@@ -382,14 +363,14 @@ function ScrollTrack() {
     <div ref={trackRef} className="relative" style={{ height: `${PROJECTS.length * 100}vh` }}>
       <div className="sticky top-0 h-screen overflow-hidden">
         <div className="absolute top-5 sm:top-8 left-5 sm:left-8 md:left-16 z-30 flex items-center gap-3 sm:gap-4">
-  <p className="text-[11px] sm:text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Selected Work</p>
-  <div className="flex items-center gap-1.5">
-    {PROJECTS.map((p, i) => (
-      <ProgressDot key={p.name} index={i} total={PROJECTS.length} scrollYProgress={scrollYProgress} />
-    ))}
-  </div>
-  <PanelCounter total={PROJECTS.length} scrollYProgress={scrollYProgress} />
-</div>
+          <p className="text-[11px] sm:text-xs font-semibold tracking-wide text-black/50 dark:text-white/50 uppercase">Selected Work</p>
+          <div className="flex items-center gap-1.5">
+            {PROJECTS.map((p, i) => (
+              <ProgressDot key={p.name} index={i} total={PROJECTS.length} scrollYProgress={scrollYProgress} />
+            ))}
+          </div>
+          <PanelCounter total={PROJECTS.length} scrollYProgress={scrollYProgress} />
+        </div>
 
         <motion.div className="flex h-full" style={{ width: `${PROJECTS.length * 100}vw`, x, willChange: "transform" }}>
           {PROJECTS.map((project, i) => (
